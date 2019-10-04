@@ -4,7 +4,7 @@
 	Auteurs:
 		- CAMBERLIN Merlin
 		- PISVIN Arthur
-	Version: 03-10-19 - Implémentation du format des fichiers
+	Version: 04-10-19 - Implémentation du format des fichiers
 
 	Commandes à indiquer dans le shell:
 		- cd ~/Documents/LINGI 1341
@@ -32,6 +32,7 @@
 #include <stdint.h> // pour les uint_xx
 #include <stdlib.h> // pour calloc, malloc, free
 #include <string.h> 
+#include <inttypes.h> //pour prinft ulong6
 
 
 /** PACKET est une structure de données représentant un paquet.
@@ -81,6 +82,113 @@ int freePACKET(PACKET* paquet)
 	}
 }
 
+/** La fonction getBitN() retourne le bit à la position @pos en comptant à partir de la gauche.
+ * exemple : 0010 0000 la position du bit 1 est 2.
+ * @pre 0<= pos < 64
+ * @post 
+ */
+uint64_t getBitN(uint64_t entete, int position)
+{
+	uint64_t tmp = entete<<position;
+	tmp = tmp>>(64-position-1);
+	return tmp;
+} 
+
+void testGetBitN()
+{
+	uint64_t test0 =  0b0000000000000000000000000000000000000000000000000000000000000000;
+	uint64_t value0 = getBitN(test0,0);
+	
+	uint64_t test1 = 0b0100000000000000000000000000000000000000000000000000000000000000;
+	uint64_t value1 = getBitN(test1,1);
+
+	uint64_t test2 = 0b0010000000000000000000000000000000000000000000000000000000000000;
+	uint64_t value2 = getBitN(test2,2);
+	
+	uint64_t test3 =  0b0000000000000000000000000000000000000000000000000000000000000001;
+	printf("test3 = %" PRIu64 "\n",test3);
+	uint64_t value3 = getBitN(test3,3);
+	
+
+	printf("\t value0 = %" PRIu64 ", excepted = 0 \n",value0);
+	printf("\t value1 = %" PRIu64 ", excepted = 1 \n",value1);
+	printf("\t value2 = %" PRIu64 ", excepted = 1 \n",value2);
+	printf("\t value3 = %" PRIu64 ", excepted = 1 \n",value3);
+	
+	
+}
+
+
+PACKET* setPACKET(uint64_t entete, char* donnees)
+{
+	printf("setPACKET() has started \n");
+
+
+	PACKET* paquet = createPtrPACKET();
+	if(paquet == NULL){printf("ERROR in setPACKET in createPtrPACKET\n");}
+
+	int deplacementBit = 64;
+
+	//1. Set type	
+	deplacementBit = deplacementBit-2;
+	uint8_t type = entete>>deplacementBit;
+	
+	if(type == 1)//0b01
+	{	paquet->type = 1;}
+	else if(type == 2) //0b10
+	{	paquet->type = 2;}
+	else if(type == 3) //0b11
+	{	
+		paquet->type = 3;
+	}
+	else
+	{	
+		fprintf(stderr, "ERROR in setPACKET in 1.set type - le type de packet est inconnu\n");
+		paquet->type = 0;
+	}
+
+	//2. Set tr
+	deplacementBit = deplacementBit-1;
+	uint8_t tr = entete>>deplacementBit;
+	printf("TR = %d \n",tr);
+	if(tr %2 == 1)
+	{
+		paquet->tr = 1;
+	}
+	else 
+	{
+		paquet->tr = 0;
+	}
+	
+	return paquet;
+}
+
+void* testSetPACKET()
+{
+	printf("testSetPACKET() has started \n");
+	
+	uint64_t entete0 = (uint64_t) 0b0000000000000000000000000000000000000000000000000000000000000000;
+	uint64_t entete1 = (uint64_t) 0b0100000000000000000000000000000000000000000000000000000000000000;
+	uint64_t entete2 = (uint64_t) 0b1010000000000000000000000000000000000000000000000000000000000000;
+	uint64_t entete3 = (uint64_t) 0b1110000000000000000000000000000000000000000000000000000000000000;
+	char* donnees = NULL;
+
+	PACKET* paquet0 = setPACKET(entete0,donnees);
+	printf("\t paquet0->type = %d, excepted = 0 \n \t paquet0->tr = %d, excepted = 0 \n",paquet0->type,paquet0->tr);
+
+	
+	PACKET* paquet1 = setPACKET(entete1,donnees);
+	printf("\t paquet1->type = %d, excepted = 1 \n \t paquet1->tr = %d, excepted = 0 \n",paquet1->type,paquet1->tr);
+	
+	PACKET* paquet2 = setPACKET(entete2,donnees);
+	printf("\t paquet2->type = %d, excepted = 2 \n \t paquet2->tr = %d, excepted = 1 \n",paquet2->type,paquet2->tr);		
+
+	PACKET* paquet3 = setPACKET(entete3,donnees);
+	printf("\t paquet3->type = %d, excepted = 3 \n \t paquet2->tr = %d, excepted = 1 \n",paquet3->type,paquet3->tr);
+
+	printf("testSetPACKET() has finished \n");
+	
+}
 
 /*--------------------------MAIN------------------------------------*/
 
@@ -93,7 +201,7 @@ int freePACKET(PACKET* paquet)
 int main(int argc, char *argv[]) 
 {
 	printf("main() has started \n");
-	
-	
+	testGetBitN();
+	//testSetPACKET();	
 	printf("main() has finished \n");
 }
