@@ -38,7 +38,7 @@ All the other fields in the structure pointed to by hints must contain either 0 
 };
 */ 
     hints.ai_family = AF_INET6;     // La valeur AF_INET6 indique que getaddrinfo() ne devrait retourner que des adresses de socket de la famille IPv6.
-    hints.ai_socktype = SOCK_DGRAM; // Type de socket pour les protocoles UDP selon https://stackoverflow.com/questions/5815675/what-is-sock-dgram-and-sock-stream/10810040 
+    hints.ai_socktype = SOCK_DGRAM; // Type de socket pour les protocoles UDP 
     hints.ai_protocol = 0;          
     hints.ai_addrlen = 0;
     hints.ai_addr = NULL;
@@ -69,64 +69,77 @@ All the other fields in the structure pointed to by hints must contain either 0 
  */
 int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
 {
-    // 0. Verifier les arguments
-    if(source_addr == NULL)
-    { 
-        fprintf(stderr, "source_addr est NULL \n");
-        return -1;
-    }
-    if(src_port <= 0)
-    {
-	fprintf(stderr, "src_port est zero ou negatif \n");
-        return -1;
-    }
-    if(dest_addr == NULL)
-    {
-	fprintf(stderr, "dest_addr est NULL \n");
-        return -1;
-    }
-    if(dst_port <= 0)
-    {
-	fprintf(stderr, "dst_port est zero ou negatif \n");
-        return -1;
-    }
 
+	printf(stderr,"===CREATION SOCKET===\n");
+
+	// 0. Verifier les arguments
+	if(source_addr == NULL)
+	{ 
+		fprintf(stderr, "source_addr est NULL \n");
+		return -1;
+	}
+	if(src_port <= 0)
+	{
+		fprintf(stderr, "src_port est zero ou negatif \n");
+		return -1;
+	}
+	if(dest_addr == NULL)
+	{
+		fprintf(stderr, "dest_addr est NULL \n");
+		return -1;
+	}
+	if(dst_port <= 0)
+	{
+		fprintf(stderr, "dst_port est zero ou negatif \n");
+		return -1;
+	}
+    
+/*struct sockaddr_in6 
+{
+	sa_family_t     sin6_family;    AF_INET6 
+	in_port_t       sin6_port;      port number 
+	uint32_t        sin6_flowinfo;  IPv6 flow information 
+	struct in6_addr sin6_addr;      IPv6 address 
+	uint32_t        sin6_scope_id;  Scope ID (new in 2.4)
+};
+*/
 	
-    // 1. Create a IPv6 socket supporting datagrams
-    int sock = socket(AF_INET6, SOCK_DGRAM, 0); // AF_INET6 specifie l'adresse en IPv6 et  SOCK_DGRAM specifie le type de socket et 0 specifie le protocole par default. //int socket(int domain, int type, int protocol);
-    if (sock == -1) 
-    {  
-        fprintf(stderr, "socket: %s , errno %d\n", strerror(sock), sock);
-        return -1;
-    }
+	source_addr->sin6_port = htons(src_port);
+	dest_addr->sin6_port = htons(dst_port);
+	
+        
+	// 1. Create a IPv6 socket supporting datagrams
 
+	int fd_src = socket(AF_INET6, SOCK_DGRAM, 0); //int socket(int domain, int type, int protocol); 
+	// AF_INET6 pour l'adresse en IPv6 et  SOCK_DGRAM pour UDP et 0 pour protocole par default. 
+	
+	if (fd_src == -1) 
+	{  
+		fprintf(stderr, "socket: %s , errno %d\n", strerror(sock), sock);
+		return -1;
+	}
+
+	// 2. Lier le socket avec la source using the bind() system call
+	
+	size_t len_addr = sizeof(struct sockaddr_in6);                      
+	int lien = bind(fd_src,(struct sockaddr*) source_addr, len_addr)
+        if(lien == -1)
+        {
+            fprintf(stderr,"Erreur dans bind() \n");
+            return -1;
+        }   
+        
+	// 3.Connect the socket to the address of the destination using the connect() system call
+	int connect_src = connect(fd_src,(struct sockaddr*) dest_addr, len_addr)
+	if(connect_src == -1)
+        {
+            fprintf(stderr,"Erreur dans connect() \n");
+            return -1;
+        }
      
-    // 2. Create socket with the src;
-    struct sockaddr *address_src;
-
-    int connex_src = connect(sock
-
-
-    // 3. Connect it to the destination
-    int connex = connect(sock, dest_addr, addrlen); // int connect(int socket, const struct sockaddr *address,
-       socklen_t address_len);
- 
-    if(connex == -1)
-    {
-        fprintf(stderr, "connnect failed : %s , errno %d\n", strerror(connex), connex);
-        return -1;
-    }
-   
-    close(sock);                                            // release the resources used by the socket
-    return 0;    
+	close(sock);                                            // release the resources used by the socket
+	return 0;    
 }
-
-
-
-
-
-
-
 
 
 /* ---------------------------------------------------- */
