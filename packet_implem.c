@@ -23,6 +23,27 @@ struct __attribute__((__packed__)) pkt {
 };
 
 
+int affichebin(char a)
+{
+    int i = 0;
+    int* octet = malloc(8*sizeof(int));
+ 
+    for(i = 0 ; i < 8 ; i++)
+    {
+        octet[i] = a % 2;
+        a /= 2;
+    }
+	for(int i = 7; i>=0; i--)
+	{
+		printf("%d", octet[i]);
+	}
+	int res = *octet;
+	free(octet);
+	printf("\n");
+    return res;
+}
+
+
 /* @return 1 si le ième bit =1
           0 si le ième bit = 0 */
 char getBit(const char c, int index)
@@ -30,6 +51,7 @@ char getBit(const char c, int index)
     char buffer = c;
     return ((buffer>>index) & 1);
 }
+
 
 /* Alloue et initialise une struct pkt
  * @return: NULL en cas d'erreur */
@@ -87,22 +109,27 @@ typedef enum {
 */
 pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 {
+	printf("debut decode\n");
     int ptr=0; //"pointeur servant à parcourir data"
+
+	affichebin(*data);
     
+
+	printf("valeur pkt->type = %d\n", (*data)>>6);
     //pkt->type
-    if(*data>>6 == 1)
+    if(*data == 1)
     {
         pkt->type = PTYPE_DATA;
     }
     else
     {
-        if(*data>>6 == 2)
+        if(*data == 2)
         {
             pkt->type = PTYPE_ACK;
         }
         else
         {
-            if(*data>>6 == 3)
+            if(*data == 3)
             {
                 pkt->type = PTYPE_NACK;
             }
@@ -216,28 +243,34 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
  */
 pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 {
-    
+
+	printf("debut encode\n");
+    /*
     if((uint16_t)*len < (15 + pkt->l*1 + pkt->length))
     {
+		printf("encode, premier if\n");
         return E_NOMEM;
     }
+*/
     int ptr = 0;
     
     //type, tr, window
     memcpy(buf, pkt, 1); //le premier byte de pkt est mis dans buf
     ptr++;
-    
+
+	printf("premier byte de pkt : ");
     
     //l, length
     if(pkt->l == 0)
     {
-        memcpy(buf+ptr, pkt+ptr+1, 1);
+		printf("pkt->l=0\n");
+        memcpy(buf+ptr, pkt+ptr, 1);
         ptr++;
     }
     else
     {
         
-        uint16_t tp = 0b1000000000000000 | pkt->length;
+        uint16_t tp = 0b1000000000000000 | pkt->length; //ajouter le premier bit qui vaut 1
         tp = htons(tp);
         memcpy(buf+ptr, &tp, 2);
         ptr=ptr+2;
@@ -377,15 +410,33 @@ ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
     int bit = *(data+1)>>7;
     if(bit==1)//longueur de 2 by
     {
-        
+        if(len<2)
+        {
+            return -1;
+        }
+        *retval = ( ((uint16_t) *(data)<<8) | (uint16_t) *(data+1) ) & 0b0111111111111111;
+        *retval = htonl(*retval);
+        return 2;
     }
+    *retval = (uint16_t) *data;
     return 1;
 }
 
 ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 {
     
-    return 1;
+    int bit = val>>15;
+    if(bit==0 && len>=1)
+    {
+        *data = (uint8_t) val;
+        return 1;
+    }
+    else if(len>=2)
+    {
+        memcpy(data, &val, 2);
+        return 2;
+    }
+    return -1;
 }
 
 size_t varuint_len(const uint8_t *data)
@@ -417,3 +468,62 @@ ssize_t predict_header_length(const pkt_t *pkt)
     }
     return 2;
 }
+
+
+
+
+int main()
+{
+	pkt_t* pkt = calloc(1,sizeof(pkt_t));
+	if(pkt==NULL)
+	{
+		printf("plantage malloc");
+		return -1;
+	}
+
+	pkt->type = 1;
+	printf("pkt->type = %d\n", pkt->type);
+	pkt->tr = 0;
+	pkt->window = 2;
+	pkt->l=0;
+	pkt->length = 0;
+	pkt->seqnum = 1;
+	pkt->timestamp=8;
+	pkt->crc1 = 7;
+	pkt->payload = NULL;
+	pkt->crc2=4;
+
+	char* buf = (char*) malloc(sizeof(pkt_t));
+	if(buf==NULL)
+	{
+		printf("plantage malloc\n");
+		return -1;
+	}
+
+	size_t len = sizeof(buf);
+	pkt_status_code p = pkt_encode(pkt, buf, &len);
+	if(p!=PKT_OK)
+	{
+		printf("plantage pkt_encode, valeur de retour : %d\n", p);
+		return -1;
+	}
+
+	pkt_t* pktRecu = malloc(sizeof(pkt_t));
+	if(pkt==NULL)
+	{
+		printf("plantage malloc\n");
+		return -1;
+	}
+
+	pkt_status_code m = pkt_decode(buf, sizeof(buf), pktRecu);
+	if(m!=PKT_OK)
+	{
+		printf("plantage pkt_decode, valeur de retour : %d\n", m);
+		return -1;
+	}
+
+	return 0;
+
+}
+
+
