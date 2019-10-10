@@ -17,10 +17,11 @@ const char * real_address(const char *address, struct sockaddr_in6 *rval)
     struct addrinfo *res;
     int test;
     
-    memset(&hints, 0, sizeof(struct addrinfo));
-    // void *memset(void *s, int c, size_t n);
-/* Contenu de la structure de données addrinfo :
-struct addrinfo {
+    memset(&hints, 0, sizeof(struct addrinfo)); // void *memset(void *s, int c, size_t n);
+
+/* Structure de données addrinfo :
+struct addrinfo 
+{
     * int              ai_family;
 This field specifies the desired address family for the returned addresses. Valid values for this field include AF_INET and AF_INET6. The value AF_UNSPEC indicates that getaddrinfo() should return socket addresses for any address family (either IPv4 or IPv6, for example) that can be used with node and service.
     * int              ai_socktype; 
@@ -58,6 +59,8 @@ All the other fields in the structure pointed to by hints must contain either 0 
 
 
 #include <sys/socket.h>
+#include <unistd.h> // pour close()
+ #include <errno.h>
 
 /* Creates a socket and initialize it
  * @source_addr: if !NULL, the source address that should be bound to this socket
@@ -69,8 +72,6 @@ All the other fields in the structure pointed to by hints must contain either 0 
  */
 int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
 {
-
-	printf(stderr,"===CREATION SOCKET===\n");
 
 	// 0. Verifier les arguments
 	if(source_addr == NULL)
@@ -115,14 +116,14 @@ int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockad
 	
 	if (fd_src == -1) 
 	{  
-		fprintf(stderr, "socket: %s , errno %d\n", strerror(sock), sock);
+		fprintf(stderr, "socket: %s , errno %d\n", strerror(fd_src), fd_src);
 		return -1;
 	}
 
 	// 2. Lier le socket avec la source using the bind() system call
 	
 	size_t len_addr = sizeof(struct sockaddr_in6);                      
-	int lien = bind(fd_src,(struct sockaddr*) source_addr, len_addr)
+	int lien = bind(fd_src,(struct sockaddr*) source_addr, len_addr);
         if(lien == -1)
         {
             fprintf(stderr,"Erreur dans bind() \n");
@@ -130,110 +131,122 @@ int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockad
         }   
         
 	// 3.Connect the socket to the address of the destination using the connect() system call
-	int connect_src = connect(fd_src,(struct sockaddr*) dest_addr, len_addr)
+	int connect_src = connect(fd_src,(struct sockaddr*) dest_addr, len_addr);
 	if(connect_src == -1)
         {
             fprintf(stderr,"Erreur dans connect() \n");
             return -1;
         }
      
-	close(sock);                                            // release the resources used by the socket
+	close(fd_src);                                            // release the resources used by the socket
 	return 0;    
 }
 
 
-/* ---------------------------------------------------- */
 
-/* EXAMPLE getaddrinfo()
-#include <sys/types.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <netdb.h>
 
-#define BUF_SIZE 500
 
-int
-main(int argc, char *argv[])
+
+#include <poll.h> // pour pollfd
+#include <stdio.h> // pour fread() et fwrite()
+#include <unistd.h> // pour read();
+
+
+/** La fonction read_write_loop() permet de lire le contenu de l'entrée standard et de l'envoyer sur un socket, tout en permettant d'afficher sur la sortie standard ce qui est lu sur ce même socket.  
+
+Si A et B tapent en même temps, les lectures et écritures sont multiplexées sur le même file descriptor (le socket) afin de ne pas bloquer le processus indéfiniment (par ex. en attendant que A finisse de taper avant d'afficher le texte de B), il est nécessaire de traiter la lecture et l'écriture simultanément à l'aide des appels systèmes : select ou poll
+
+NB : fread() et fwrite() font des lectures/écritures via un buffer c-à-d non immédiates!
+
+La taille maximale des segments envoyés ou reçus sera de 1024 bytes.
+
+/* Loop reading a socket and printing to stdout,
+ * while reading stdin and writing to the socket
+ * @sfd: The socket file descriptor. It is both bound and connected.
+ * @return: as soon as stdin signals EOF
+ */
+void read_write_loop(int sfd)
 {
-    struct addrinfo hints;
-    struct addrinfo *result, *rp;
-    int sfd, s;
-    struct sockaddr_storage peer_addr;
-    socklen_t peer_addr_len;
-    ssize_t nread;
-    char buf[BUF_SIZE];
+	const int MAXSIZE = 1024;
+		
+	struct pollfd pfd;
+        pfd.fd = sfd; 
+        pfd.events = POLLIN; // Jsp lequel mettre
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s port\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
+	struct pollfd filedescriptors[1];
+	filedescriptors[0] = pfd;
 
-    memset(&hints, 0, sizeof(struct addrinfo)); 
-    hints.ai_family = AF_UNSPEC;    / Allow IPv4 or IPv6 /
-    hints.ai_socktype = SOCK_DGRAM; /* Datagram socket /
-    hints.ai_flags = AI_PASSIVE;    /* For wildcard IP address /
-    hints.ai_protocol = 0;          /* Any protocol /
-    hints.ai_canonname = NULL;
-    hints.ai_addr = NULL;
-    hints.ai_next = NULL;
+	nfds_t nfds = 1;
+	int timeout = 500; //poll() shall wait at least 'timeout' [ms] for an event to occur on any of the selected file descriptors.
+	// 500ms ont ete choisis comme dans l'exemple de la man page
 
-    s = getaddrinfo(NULL, argv[1], &hints, &result);
-    if (s != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
-        exit(EXIT_FAILURE);
-    }
+	
+	int p = poll(filedescriptors,nfds, timeout); // int poll(struct pollfd fds[], nfds_t nfds, int timeout);
+	if(p == -1)
+	{
+		fprintf(stderr, "An error occur: %s \n", strerror(errno));
+		return;
+	}
+	else if(p == 0)
+	{
+		fprintf(stderr, "The call timed out and no file descriptors have been selected \n");
+		return;
+	}
+	else
+	{
+		// Boucle pour lire un socket et imprimer sur stdout, tout en lisant stdin et en écrivant sur le socket
+		char buffer_socket[MAXSIZE];
+		char buffer_stdin[MAXSIZE];
+		while(1)
+		{
+			//1. Lire le socket
+			ssize_t r_socket = read(sfd, buffer_socket, sizeof(char)); //ssize_t read(int fd, void *buf, size_t count)
+			if(r_socket == -1)
+			{
+				fprintf(stderr, "An error occured \n");
+				return;
+			}
+			if(r_socket > MAXSIZE)
+			{
+				fprintf(stderr, "La taille de la lecture est supérieure à la taille du buffer (%d bytes) \n",MAXSIZE);
+				return;
+			}
+			if(r_socket == 0)
+			{
+				fprintf(stderr, "Fin de la lecture atteinte \n");
+				return;
+			}
+			
+			// 2. Afficher sur la sortie standard
+			fprintf(stdout,"%s",buffer_socket);	
 
-    /* getaddrinfo() returns a list of address structures.
-       Try each address until we successfully bind(2).
-       If socket(2) (or bind(2)) fails, we (close the socket
-       and) try the next address. /
-
-    for (rp = result; rp != NULL; rp = rp->ai_next) {
-        sfd = socket(rp->ai_family, rp->ai_socktype,
-                rp->ai_protocol);
-        if (sfd == -1)
-            continue;
-
-        if (bind(sfd, rp->ai_addr, rp->ai_addrlen) == 0)
-            break;                  /* Success /
-
-        close(sfd);
-    }
-
-    if (rp == NULL) {               /* No address succeeded /
-        fprintf(stderr, "Could not bind\n");
-        exit(EXIT_FAILURE);
-    }
-
-    freeaddrinfo(result);           /* No longer needed /
-
-    /* Read datagrams and echo them back to sender /
-
-    for (;;) {
-        peer_addr_len = sizeof(struct sockaddr_storage);
-        nread = recvfrom(sfd, buf, BUF_SIZE, 0,
-                (struct sockaddr *) &peer_addr, &peer_addr_len);
-        if (nread == -1)
-            continue;               /* Ignore failed request /
-
-        char host[NI_MAXHOST], service[NI_MAXSERV];
-
-        s = getnameinfo((struct sockaddr *) &peer_addr,
-                        peer_addr_len, host, NI_MAXHOST,
-                        service, NI_MAXSERV, NI_NUMERICSERV);
-       if (s == 0)
-            printf("Received %ld bytes from %s:%s\n",
-                    (long) nread, host, service);
-        else
-            fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
-
-        if (sendto(sfd, buf, nread, 0,
-                    (struct sockaddr *) &peer_addr,
-                    peer_addr_len) != nread)
-            fprintf(stderr, "Error sending response\n");
-    }
+			// 3. Lire l'entrée standard
+			int r_stdin = read(0, buffer_stdin, sizeof(char)); //ssize_t read(int fd, void *buf, size_t count)
+			// le fd = 0 correspond à stdin
+			if(r_stdin == -1)
+			{
+				fprintf(stderr, "An error occured \n");
+				return;
+			}
+			if(r_stdin > MAXSIZE)
+			{
+				fprintf(stderr, "La taille de la lecture est supérieure à la taille du buffer (%d bytes) \n",MAXSIZE);
+				return;
+			}
+			if(r_stdin == 0)
+			{
+				fprintf(stderr, "Fin de la lecture de l'entrée standard \n");
+			}
+			
+			// 4. Ecrire dans le socket
+			int w_socket = write(sfd, buffer_stdin, sizeof(buffer_stdin)); //ssize_t write(int fd, const void *buf, size_t count);  	
+			if(w_socket == -1)
+			{
+				fprintf(stderr,"An error occured while writing on the socket \n");
+				return;
+			}
+			
+		}
+	}		
 }
-*/
+
