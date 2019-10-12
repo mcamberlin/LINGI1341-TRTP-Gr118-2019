@@ -17,9 +17,6 @@ struct __attribute__((__packed__)) pkt {
 	//second byte
     uint8_t l:1;
 	uint16_t length:15;
-
-
-
     uint8_t seqnum;
     uint32_t timestamp;
     uint32_t crc1;
@@ -54,7 +51,7 @@ char getBit(const char c, int index)
  * @return: NULL en cas d'erreur */
 pkt_t* pkt_new()
 {
-    pkt_t* p = malloc(sizeof(pkt_t)); //initialise à zero
+    pkt_t* p = calloc(1,sizeof(pkt_t)); //initialise à zero
     if(p==NULL)
     {
         printf("allocation du nouveau paquet a echoue. \n");
@@ -106,7 +103,7 @@ typedef enum {
 */
 pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 {
-	printf("debut decode\n");
+	printf("-----DEBUT DECODE-----\n");
     int ptr=0; //"pointeur servant à parcourir data"
 
 	printf("Premier byte de data dans decode : ");
@@ -149,7 +146,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     pkt->window = ((*data)>>3);
 	printf("pkt->windom = %d\n", (int) ((*data)>>3));
     
-    //A partir d'ici on traite le deuxieme byte de data
+    //A partir d'ici on traite le deuxieme byte de data, ca va chier 
     ptr++;
     
     //pkt->l
@@ -160,7 +157,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     if(pkt->l == 0)
     {
         //length mesure 7 bits
-        pkt->length = (*(data+ptr)<<1)>>1;
+        pkt->length = (*(data+ptr))>>1; //le l disparait
         if((pkt->length)>MAX_PAYLOAD_SIZE)
         {
             return E_LENGTH;
@@ -169,38 +166,58 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
         ptr++;
         //verifie si le paquet a bien la bonne longueuer len
         //si L==0, longueur attedue = 12+longueur du payload
-        if((uint16_t) len!=(pkt->length+12))
+		/*
+        if((uint16_t) len!=(pkt->length+15))
         {
+			printf("le paquet est inconscient\n");
             return E_UNCONSISTENT;
         }
+		*/
+		//on traite les erreurs a la fin 
+		printf("pkt->length = %d\n", pkt->length);
     }
     else
     {
         //length mesure 15 bits
-        uint16_t tmp = ((uint16_t) *(data+ptr)<<8) | (uint16_t) *(data+ptr+1); //concatenation
-        pkt->length = tmp & 0b0111111111111111; //enlever le premier bit qui vaut 1
-        pkt->length=ntohs(pkt->length);
+		// [--------][-------l]
+		printf("length dans data : \n");
+		affichebin(*(data+ptr));
+		affichebin(*(data+ptr+1));
+		
+        uint16_t tmp = (((uint16_t) *(data+ptr))>>1)<<1 | (uint16_t) *(data+ptr+1)<<8;
+
+		printf("length dans tmp : \n");
+		affichebin((char) tmp);
+		affichebin(*( (char*) (&tmp) +1));
+
+        pkt->length=ntohs(tmp);
+		printf("pkt->length (sur 15 bits) = %d\n", pkt->length);
         
+/* Erreur a la fin
         //verifie si le paquet a bien la bonne longueuer len
         //si L==1, longueur attendue = 16+longueur du payload
         if((uint16_t) len!=(pkt->length+16))
         {
             return E_UNCONSISTENT;
         }
+*/
         ptr=ptr+2;
     }
     
     //pkt->seqnum;
     pkt->seqnum = *(data+ptr);
+	printf("pkt->seqnum = %d\n", pkt->seqnum);
     ptr++;
     
     //pkt->timestamp
-    pkt->timestamp = ((uint32_t)*(data+ptr))<<24 | ((uint32_t)*(data+ptr+1))<<16 | ((uint32_t)*(data+ptr+2))<<8 | (uint32_t)*(data+ptr+3);
+    pkt->timestamp = ((uint32_t)*(data+ptr+3))<<24 | ((uint32_t)*(data+ptr+2))<<16 | ((uint32_t)*(data+ptr+1))<<8 | (uint32_t)*(data+ptr);
+	printf("pkt->timestamp = %d\n", pkt->timestamp);
     ptr=ptr+4;
     
     //pkt->crc1
-    pkt->crc1= ((uint32_t)*(data+ptr))<<24 | ((uint32_t)*(data+ptr+1))<<16 | ((uint32_t)*(data+ptr+2))<<8 | (uint32_t)*(data+ptr+3);
+    pkt->crc1= ((uint32_t)*(data+ptr+3))<<24 | ((uint32_t)*(data+ptr+2))<<16 | ((uint32_t)*(data+ptr+1))<<8 | (uint32_t)*(data+ptr);
     pkt->crc1=ntohl(pkt->crc1);
+	printf("pkt->crc1 = %d\n", pkt->crc1);
     ptr=ptr+4;
     
     //pkt->paylaod
@@ -220,13 +237,15 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     {
         pkt->payload = NULL;
     }
+	printf("pkt->payload = %c\n", *pkt->payload);
     
     //pkt->crc2
     if(pkt->tr==1)
     {
-        pkt->crc2 = ((uint32_t)*(data+ptr))<<24 | ((uint32_t)*(data+ptr+1))<<16 | ((uint32_t)*(data+ptr+2))<<8 | (uint32_t)*(data+ptr+3);
+        pkt->crc2 = ((uint32_t)*(data+ptr+3))<<24 | ((uint32_t)*(data+ptr+2))<<16 | ((uint32_t)*(data+ptr+1))<<8 | (uint32_t)*(data+ptr);
     }
     pkt->crc2=ntohl(pkt->crc2);
+	printf("pkt->crc2 = %d\n", pkt->crc2);
     
     return PKT_OK;
     
@@ -280,20 +299,22 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
     }
     else
     {
-     	printf("pkt->l = 1\n");
-        uint16_t tp = pkt->length; //mettre en network byte order
-        tp = htons(tp);
-		//tp = 0b1000000000000000 | tp; //ajouter le l qui vaut 1
+     	printf("pkt->l = 1 et ptr = %d\n", ptr);
+        uint16_t tp = (pkt->length); //mettre en network byte order
+		printf("tp = %d\n", tp);
+        tp = htons(tp) + 1; //+ 1 pour mettre le l=1
         memcpy(buf+ptr, &tp, 2);
-        ptr=ptr+2;
 		printf("les deux bytes de length et l sont : \n");
 		affichebin(*(buf+ptr));
 		affichebin(*(buf+ptr+1));
+        ptr=ptr+2;
     }
 	printf("fin length\n");
     
     //seqnum
     memcpy(buf+ptr, &(pkt->seqnum), 1);
+	printf("seqnum = ");
+	affichebin(*(buf+ptr));
 	printf("fin seqnum\n");
     ptr++;
     
@@ -310,6 +331,7 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
     
     //payload
     memcpy(buf+ptr,pkt->payload,pkt->length);
+	free(pkt->payload);
     printf("fin payload\n");
     ptr = ptr + pkt->length;
     
@@ -499,39 +521,50 @@ ssize_t predict_header_length(const pkt_t *pkt)
 int main()
 {
 
-	pkt_t* pkt = calloc(1,sizeof(pkt_t));
+	pkt_t* pkt = (pkt_t*) calloc(1,sizeof(pkt_t));
 	if(pkt==NULL)
 	{
 		printf("plantage malloc");
 		return -1;
 	}
-
 	
-	char* ptr = (char*) pkt;
+	int ptr = 0;
+	char* pk = (char*) pkt;
 
-	pkt->type = 2;
+	pkt->type = 1;
 	pkt->tr = 0;
-	pkt->window = 4;
-	printf("premier byte de pkt : ");
-	affichebin(*ptr);
+	pkt->window = 7;
+	ptr++;
 	pkt->l=0;
-	pkt->length = 5;
+	pkt->length = 1; //taille d'un char
 	if(pkt->l==0)
 	{
 		printf("second byte de pkt : ");
-		affichebin(*(ptr+1));
+		affichebin(*(pk+ptr));
+		ptr++;
 	}
 	else
 	{
 		printf("deux bytes contenant length et l dans pkt : \n");
-		affichebin(*(ptr+1));
-		affichebin(*(ptr+2));
+		affichebin(*(pk+ptr));
+		affichebin(*(pk+ptr+1));
+		ptr+=2;
 	}
-	pkt->seqnum = 1;
-	pkt->timestamp=8;
-	pkt->crc1 = 7;
-	pkt->payload = NULL;
-	pkt->crc2=4;
+	pkt->seqnum = 13;
+	printf("pkt->seqnum : ");
+	affichebin(*(pk+ptr));
+	pkt->timestamp=78;
+	pkt->crc1 = 7889;
+	pkt->payload = malloc(sizeof(int));
+	if(pkt->payload == NULL)
+	{
+		printf("plantage malloc pkt->payload");
+		return -1;
+	}
+	*pkt->payload = 'p';
+	printf("pkt->payload = a\n");
+	
+	pkt->crc2=7896;
 
 
 	char* buf = (char*) malloc(sizeof(pkt_t));
@@ -549,12 +582,15 @@ int main()
 		return -1;
 	}
 
-	pkt_t* pktRecu = malloc(sizeof(pkt_t));
-	if(pkt==NULL)
+	printf("initialisation du nouveau pkt\n");
+	pkt_t* pktRecu =  (pkt_t*) calloc(1,sizeof(pkt_t));
+	if(pktRecu==NULL)
 	{
 		printf("plantage malloc\n");
 		return -1;
 	}
+	printf("fin initialisation du nouveau pkt\n");
+
 
 	pkt_status_code m = pkt_decode(buf, sizeof(buf), pktRecu);
 	if(m!=PKT_OK)
@@ -562,6 +598,10 @@ int main()
 		printf("plantage pkt_decode, valeur de retour : %d\n", m);
 		return -1;
 	}
+
+	free(pkt);
+	free(buf);
+	free(pktRecu);
 
 	return 0;
 
