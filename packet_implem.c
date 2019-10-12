@@ -10,11 +10,16 @@
 
 
 struct __attribute__((__packed__)) pkt {
+	//premier byte 
     ptypes_t type:2;
     uint8_t tr:1;
     uint8_t window:5;
+	//second byte
     uint8_t l:1;
-    uint16_t length;
+	uint16_t length:15;
+
+
+
     uint8_t seqnum;
     uint32_t timestamp;
     uint32_t crc1;
@@ -23,24 +28,16 @@ struct __attribute__((__packed__)) pkt {
 };
 
 
-int affichebin(char a)
+void affichebin(char a)
 {
     int i = 0;
-    int* octet = malloc(8*sizeof(int));
  
-    for(i = 0 ; i < 8 ; i++)
+    for(i = 7 ; i >=0 ; i--)
     {
-        octet[i] = a % 2;
-        a /= 2;
+        int res = a>>i & 1;
+		printf("%d", res);
     }
-	for(int i = 7; i>=0; i--)
-	{
-		printf("%d", octet[i]);
-	}
-	int res = *octet;
-	free(octet);
 	printf("\n");
-    return res;
 }
 
 
@@ -112,26 +109,29 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 	printf("debut decode\n");
     int ptr=0; //"pointeur servant à parcourir data"
 
+	printf("Premier byte de data dans decode : ");
 	affichebin(*data);
     
-
-	printf("valeur pkt->type = %d\n", (*data)>>6);
     //pkt->type
-    if(*data == 1)
+	int type = (int) (*data & 0b00000011);
+    if(type == 1)
     {
         pkt->type = PTYPE_DATA;
+		printf("pkt->type = 1\n");
     }
     else
     {
-        if(*data == 2)
+        if(type == 2)
         {
             pkt->type = PTYPE_ACK;
+			printf("pkt->type = 2\n");
         }
         else
         {
-            if(*data == 3)
+            if(type == 3)
             {
                 pkt->type = PTYPE_NACK;
+				printf("pkt->type = 3\n");
             }
             else
             {
@@ -142,16 +142,19 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     
     //pkt->tr;
     pkt->tr = getBit(*data, 2);
+	printf("pkt->tr = %d\n", getBit(*data, 2));
     //possible erreur?????
     
     //pkt->window;
-    pkt->window = (((*data)<<3)>>3);
+    pkt->window = ((*data)>>3);
+	printf("pkt->windom = %d\n", (int) ((*data)>>3));
     
     //A partir d'ici on traite le deuxieme byte de data
     ptr++;
     
     //pkt->l
-    pkt->l = *(data+ptr)>>7;
+    pkt->l = getBit(*(data+ptr), 0);
+	printf("pkt->l = %d\n", (int) getBit(*(data+ptr), 0));
     
     //pkt->length
     if(pkt->l == 0)
@@ -244,59 +247,80 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 {
 
-	printf("debut encode\n");
-    /*
+	printf("----DEBUT ENCODE----\n");
+/*
+
+	printf("Taille maxi: len = %ld\n", *len);
+    
     if((uint16_t)*len < (15 + pkt->l*1 + pkt->length))
     {
 		printf("encode, premier if\n");
         return E_NOMEM;
     }
 */
+
     int ptr = 0;
     
     //type, tr, window
     memcpy(buf, pkt, 1); //le premier byte de pkt est mis dans buf
     ptr++;
 
-	printf("premier byte de pkt : ");
+	printf("premier byte de buf dans encode : ");
+	affichebin(*(buf));
     
     //l, length
     if(pkt->l == 0)
     {
 		printf("pkt->l=0\n");
-        memcpy(buf+ptr, pkt+ptr, 1);
+		uint8_t pktlength = (uint8_t) (pkt->length)<<1; //decaler pour inserer le 0
+        memcpy(buf+ptr, &pktlength, 1);
+		printf("second byte de buf dans encode : ");
+		affichebin(*(buf+ptr));
         ptr++;
     }
     else
     {
-        
-        uint16_t tp = 0b1000000000000000 | pkt->length; //ajouter le premier bit qui vaut 1
+     	printf("pkt->l = 1\n");
+        uint16_t tp = pkt->length; //mettre en network byte order
         tp = htons(tp);
+		//tp = 0b1000000000000000 | tp; //ajouter le l qui vaut 1
         memcpy(buf+ptr, &tp, 2);
         ptr=ptr+2;
+		printf("les deux bytes de length et l sont : \n");
+		affichebin(*(buf+ptr));
+		affichebin(*(buf+ptr+1));
     }
+	printf("fin length\n");
     
     //seqnum
-    memcpy(buf+ptr, &pkt->seqnum, 1);
+    memcpy(buf+ptr, &(pkt->seqnum), 1);
+	printf("fin seqnum\n");
     ptr++;
     
     //timestamp
-    memcpy(buf+ptr, &pkt->timestamp, 4);
+    memcpy(buf+ptr, &(pkt->timestamp), 4);
+	printf("fin timestamp\n");
     ptr=ptr+4;
     
     //crc1
     uint32_t t = htonl(pkt->crc1);
     memcpy(buf+ptr, &t, 4);
+	printf("fin crc1\n");
     ptr = ptr+4;
     
     //payload
     memcpy(buf+ptr,pkt->payload,pkt->length);
+    printf("fin payload\n");
     ptr = ptr + pkt->length;
     
     //CRC2
     uint32_t tmp = htonl(pkt->crc2);
-    memcpy(buf+ptr,&tmp,4);    
+	printf("fin crc2\n");
+    memcpy(buf+ptr,&tmp,4);  
+
     
+	printf("----FIN ENCODE----\n\n\n");
+	
     return PKT_OK;
 }
 
@@ -474,6 +498,7 @@ ssize_t predict_header_length(const pkt_t *pkt)
 
 int main()
 {
+
 	pkt_t* pkt = calloc(1,sizeof(pkt_t));
 	if(pkt==NULL)
 	{
@@ -481,17 +506,33 @@ int main()
 		return -1;
 	}
 
-	pkt->type = 1;
-	printf("pkt->type = %d\n", pkt->type);
+	
+	char* ptr = (char*) pkt;
+
+	pkt->type = 2;
 	pkt->tr = 0;
-	pkt->window = 2;
+	pkt->window = 4;
+	printf("premier byte de pkt : ");
+	affichebin(*ptr);
 	pkt->l=0;
-	pkt->length = 0;
+	pkt->length = 5;
+	if(pkt->l==0)
+	{
+		printf("second byte de pkt : ");
+		affichebin(*(ptr+1));
+	}
+	else
+	{
+		printf("deux bytes contenant length et l dans pkt : \n");
+		affichebin(*(ptr+1));
+		affichebin(*(ptr+2));
+	}
 	pkt->seqnum = 1;
 	pkt->timestamp=8;
 	pkt->crc1 = 7;
 	pkt->payload = NULL;
 	pkt->crc2=4;
+
 
 	char* buf = (char*) malloc(sizeof(pkt_t));
 	if(buf==NULL)
