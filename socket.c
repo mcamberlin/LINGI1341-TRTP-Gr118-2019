@@ -1,8 +1,12 @@
-#include <stdio.h>
-#include <sys/types.h> // 3 prochains includes pour getaddrinfo
+#include <stdio.h> // pour fread() et fwrite()
+#include <sys/types.h> // pour recvfrom(), pour connect() et les 3 prochains includes pour getaddrinfo()
 #include <sys/socket.h>
 #include <netdb.h>
 #include <string.h>  // Pour memset()
+#include <poll.h> // pour pollfd
+#include <unistd.h> // pour read() et pour close()
+#include <errno.h>
+
 
 /** La fonction real_address() permet de convertir une chaîne de caractères représentant soit un nom de dommaine soit une adresse IPv6, en une structure  struct @sockaddr_in6 utilisable par l'OS 
  * @address: The name to resolve
@@ -57,11 +61,6 @@ All the other fields in the structure pointed to by hints must contain either 0 
 }
 
 
-
-#include <sys/socket.h>
-#include <unistd.h> // pour close()
- #include <errno.h>
-
 /* Creates a socket and initialize it
  * @source_addr: if !NULL, the source address that should be bound to this socket
  * @src_port: if >0, the port on which the socket is listening
@@ -111,7 +110,8 @@ int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockad
         
 	// 1. Create a IPv6 socket supporting datagrams
 
-	int fd_src = socket(AF_INET6, SOCK_DGRAM, 0); //int socket(int domain, int type, int protocol); 
+	int fd_src = socket(AF_INET6, SOCK_DGRAM, 0); 
+	//int socket(int domain, int type, int protocol); 
 	// AF_INET6 pour l'adresse en IPv6 et  SOCK_DGRAM pour UDP et 0 pour protocole par default. 
 	
 	if (fd_src == -1) 
@@ -138,18 +138,10 @@ int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockad
             return -1;
         }
      
-	close(fd_src);                                            // release the resources used by the socket
+	// ? utile ? close(fd_src); // ferme le file descriptor 
 	return 0;    
 }
 
-
-
-
-
-
-#include <poll.h> // pour pollfd
-#include <stdio.h> // pour fread() et fwrite()
-#include <unistd.h> // pour read();
 
 
 /** La fonction read_write_loop() permet de lire le contenu de l'entrée standard et de l'envoyer sur un socket, tout en permettant d'afficher sur la sortie standard ce qui est lu sur ce même socket.  
@@ -249,4 +241,48 @@ void read_write_loop(int sfd)
 		}
 	}		
 }
+ 
+/* Lorsque un client veut parler à un serveur, il spécifie l'adresse et port du serveur, et choisit un port aléatoire pour lui. Le serveur par contre ne connait pas à priori l'adresse du client qui se connectera.
+
+Ecrire une fonction qui interceptera le premier message reçu par le serveur, afin de connaître l'adresse du client et de pouvoir connecter le socket du serveur au client.
+
+ * Block the caller until a message is received on sfd,
+ * and connect the socket to the source addresse of the received message
+ * @sfd: a file descriptor to a bound socket but not yet connected
+ * @return: 0 in case of success, -1 otherwise
+ * @POST: This call is idempotent, it does not 'consume' the data of the message,
+ * and could be repeated several times blocking only at the first call.
+ */
+int wait_for_client(int sfd)
+{	
+	// 1. Intercepter le premier message reçu par le serveur, afin de connaître l'adresse du client via recvfrom()
+	
+	struct sockaddr_in6 src_addr; // pour s'assurer qu'il s'agisse d'une adresse IPv6
+	socklen_t addrlen = sizeof(struct sockaddr_in6);
+
+	ssize_t rec = recvfrom(sfd,NULL,0,MSG_PEEK,(struct sockaddr *) &src_addr,&addrlen);
+	// ssize_t recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len);
+	
+	if(rec ==-1) // si recvfrom plante
+	{
+	    fprintf(stderr, "An error occur in wait_for_client with recfrom: %s \n", strerror(errno));
+	    return -1;
+	}
+
+	// 2. Connecter le socket du serveur au client via connect()
+	int connexion = connect(sfd, (struct sockaddr *) &src_addr,addrlen);
+	// int connect(int socket, const struct sockaddr *address, socklen_t address_len);
+	
+	if(connexion == -1) // Si ca plante
+	{
+		fprintf(stderr, "An error occur in wait_for_client with connect: %s \n", strerror(errno));
+		return -1;  
+	}
+	
+	return 0;
+}
+
+
+
+
 
