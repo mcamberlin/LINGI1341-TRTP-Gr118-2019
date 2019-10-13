@@ -140,7 +140,10 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     //pkt->tr;
     pkt->tr = getBit(*data, 2);
 	printf("pkt->tr = %d\n", getBit(*data, 2));
-    //possible erreur?????
+	if(type!=PTYPE_DATA && pkt->tr!=0)
+	{
+		return E_TR;
+	}
     
     //pkt->window;
     pkt->window = ((*data)>>3);
@@ -185,6 +188,11 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 		affichebin(*(data+ptr+1));
 		
         uint16_t tmp = (((uint16_t) *(data+ptr))>>1)<<1 | (uint16_t) *(data+ptr+1)<<8;
+		if(tmp > MAX_PAYLOAD_SIZE)
+		{
+			printf("Valeur du champ length (=%d) > 512", tmp);
+			return E_LENGTH;
+		}
 
 		printf("length dans tmp : \n");
 		affichebin((char) tmp);
@@ -193,14 +201,13 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
         pkt->length=ntohs(tmp);
 		printf("pkt->length (sur 15 bits) = %d\n", pkt->length);
         
-/* Erreur a la fin
         //verifie si le paquet a bien la bonne longueuer len
         //si L==1, longueur attendue = 16+longueur du payload
-        if((uint16_t) len!=(pkt->length+16))
+        if((uint16_t) len!=(pkt->length)+16)
         {
             return E_UNCONSISTENT;
         }
-*/
+
         ptr=ptr+2;
     }
     
@@ -212,6 +219,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     //pkt->timestamp
     pkt->timestamp = ((uint32_t)*(data+ptr+3))<<24 | ((uint32_t)*(data+ptr+2))<<16 | ((uint32_t)*(data+ptr+1))<<8 | (uint32_t)*(data+ptr);
 	printf("pkt->timestamp = %d\n", pkt->timestamp);
+	
     ptr=ptr+4;
     
     //pkt->crc1
@@ -228,8 +236,6 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
         {
             return E_NOMEM; //je sais pas quoi mettre d'autre
         } 
-        //void *memcpy(void *dest, const void *src, size_t n);
-        // The memcpy() function copies n bytes from memory area src to memory area dest.
         memcpy(pkt->payload, data+ptr, pkt->length);
         ptr = ptr+(pkt->length);
     }
@@ -237,7 +243,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     {
         pkt->payload = NULL;
     }
-	printf("pkt->payload = %c\n", *pkt->payload);
+	printf("pkt->payload = %d\n", *pkt->payload);
     
     //pkt->crc2
     if(pkt->tr==1)
@@ -267,20 +273,23 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 {
 
 	printf("----DEBUT ENCODE----\n");
-/*
+
 
 	printf("Taille maxi: len = %ld\n", *len);
     
     if((uint16_t)*len < (15 + pkt->l*1 + pkt->length))
     {
-		printf("encode, premier if\n");
+		printf("encode, premier if. len = %ld; longueur totale = %d\n",*len, (15 + pkt->l*1 + pkt->length));
         return E_NOMEM;
     }
-*/
 
     int ptr = 0;
     
     //type, tr, window
+	if(pkt->type!=PTYPE_DATA && pkt->tr!=0)
+	{
+		return E_TR;
+	}
     memcpy(buf, pkt, 1); //le premier byte de pkt est mis dans buf
     ptr++;
 
@@ -536,7 +545,7 @@ int main()
 	pkt->window = 7;
 	ptr++;
 	pkt->l=0;
-	pkt->length = 1; //taille d'un char
+	pkt->length = 4;
 	if(pkt->l==0)
 	{
 		printf("second byte de pkt : ");
@@ -555,13 +564,13 @@ int main()
 	affichebin(*(pk+ptr));
 	pkt->timestamp=78;
 	pkt->crc1 = 7889;
-	pkt->payload = malloc(sizeof(int));
+	pkt->payload = (char*) malloc(pkt->length);
 	if(pkt->payload == NULL)
 	{
 		printf("plantage malloc pkt->payload");
 		return -1;
 	}
-	*pkt->payload = 'p';
+	*pkt->payload = 5; 
 	printf("pkt->payload = a\n");
 	
 	pkt->crc2=7896;
@@ -574,7 +583,7 @@ int main()
 		return -1;
 	}
 
-	size_t len = sizeof(buf);
+	size_t len = (15 + pkt->l*1 + pkt->length);
 	pkt_status_code p = pkt_encode(pkt, buf, &len);
 	if(p!=PKT_OK)
 	{
@@ -582,14 +591,12 @@ int main()
 		return -1;
 	}
 
-	printf("initialisation du nouveau pkt\n");
 	pkt_t* pktRecu =  (pkt_t*) calloc(1,sizeof(pkt_t));
 	if(pktRecu==NULL)
 	{
 		printf("plantage malloc\n");
 		return -1;
 	}
-	printf("fin initialisation du nouveau pkt\n");
 
 
 	pkt_status_code m = pkt_decode(buf, sizeof(buf), pktRecu);
