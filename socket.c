@@ -16,7 +16,7 @@
  */
 const char * real_address(const char *address, struct sockaddr_in6 *rval)
 {
-    char *service;
+    char *service = NULL;
     struct addrinfo hints;
     struct addrinfo *res;
     int test;
@@ -44,6 +44,7 @@ All the other fields in the structure pointed to by hints must contain either 0 
 */ 
     hints.ai_family = AF_INET6;     // La valeur AF_INET6 indique que getaddrinfo() ne devrait retourner que des adresses de socket de la famille IPv6.
     hints.ai_socktype = SOCK_DGRAM; // Type de socket pour les protocoles UDP 
+    hints.ai_flags=AI_CANONNAME;
     hints.ai_protocol = 0;          
     hints.ai_addrlen = 0;
     hints.ai_addr = NULL;
@@ -57,9 +58,13 @@ All the other fields in the structure pointed to by hints must contain either 0 
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(test));
         return gai_strerror(test);
     } 
+    
+    memcpy(rval, res->ai_addr,sizeof(res->ai_addr));
+    // HELP - Cast en sock_addrin6 utile ? 
+
+    freeaddrinfo(res);
     return NULL;
 }
-
 
 /* Creates a socket and initialize it
  * @source_addr: if !NULL, the source address that should be bound to this socket
@@ -121,8 +126,7 @@ int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockad
 	}
 
 	// 2. Lier le socket avec la source using the bind() system call
-	
-	size_t len_addr = sizeof(struct sockaddr_in6);                      
+	size_t len_addr = sizeof(struct  sockaddr_in6);                      
 	int lien = bind(fd_src,(struct sockaddr*) source_addr, len_addr);
         if(lien == -1)
         {
@@ -138,8 +142,7 @@ int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockad
             return -1;
         }
      
-	// ? utile ? close(fd_src); // ferme le file descriptor 
-	return 0;    
+	return fd_src;    
 }
 
 
@@ -163,15 +166,14 @@ void read_write_loop(int sfd)
 		
 	struct pollfd pfd;
         pfd.fd = sfd; 
-        pfd.events = POLLIN; // Jsp lequel mettre
+        pfd.events = POLLIN; 
 
 	struct pollfd filedescriptors[1];
 	filedescriptors[0] = pfd;
 
 	nfds_t nfds = 1;
-	int timeout = 500; //poll() shall wait at least 'timeout' [ms] for an event to occur on any of the selected file descriptors.
+	int timeout = 5000; //poll() shall wait at least 'timeout' [ms] for an event to occur on any of the selected file descriptors.
 	// 500ms ont ete choisis comme dans l'exemple de la man page
-
 	
 	int p = poll(filedescriptors,nfds, timeout); // int poll(struct pollfd fds[], nfds_t nfds, int timeout);
 	if(p == -1)
@@ -191,8 +193,37 @@ void read_write_loop(int sfd)
 		char buffer_stdin[MAXSIZE];
 		while(1)
 		{
-			//1. Lire le socket
-			ssize_t r_socket = read(sfd, buffer_socket, sizeof(char)); //ssize_t read(int fd, void *buf, size_t count)
+
+			// 1. Lire le contenu de l'entrée standard
+			
+			int r_stdin = read(0, buffer_stdin, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
+			// le fd = 0 correspond à stdin
+			if(r_stdin == -1)
+			{
+				fprintf(stderr, "An error occured \n");
+				return;
+			}
+			if(r_stdin > MAXSIZE)
+			{
+				fprintf(stderr, "La taille de la lecture est supérieure à la taille du buffer (%d bytes) \n",MAXSIZE);
+				return;
+			}
+			if(r_stdin == 0)
+			{
+				fprintf(stderr, "Fin de la lecture de l'entrée standard \n");
+				return;
+			}
+
+			// 2. L'écrire dans le socket
+			int w_socket = write(sfd, buffer_stdin, MAXSIZE); //ssize_t write(int fd, const void *buf, size_t count);  	
+			if(w_socket == -1)
+			{
+				fprintf(stderr,"An error occured while writing on the socket \n");
+				return;
+			}
+		
+			//3. Lire le socket
+			ssize_t r_socket = read(sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
 			if(r_socket == -1)
 			{
 				fprintf(stderr, "An error occured \n");
@@ -209,35 +240,9 @@ void read_write_loop(int sfd)
 				return;
 			}
 			
-			// 2. Afficher sur la sortie standard
+			// 4. Afficher sur la sortie standard ce qui a été lu sur le socket
 			fprintf(stdout,"%s",buffer_socket);	
 
-			// 3. Lire l'entrée standard
-			int r_stdin = read(0, buffer_stdin, sizeof(char)); //ssize_t read(int fd, void *buf, size_t count)
-			// le fd = 0 correspond à stdin
-			if(r_stdin == -1)
-			{
-				fprintf(stderr, "An error occured \n");
-				return;
-			}
-			if(r_stdin > MAXSIZE)
-			{
-				fprintf(stderr, "La taille de la lecture est supérieure à la taille du buffer (%d bytes) \n",MAXSIZE);
-				return;
-			}
-			if(r_stdin == 0)
-			{
-				fprintf(stderr, "Fin de la lecture de l'entrée standard \n");
-			}
-			
-			// 4. Ecrire dans le socket
-			int w_socket = write(sfd, buffer_stdin, sizeof(buffer_stdin)); //ssize_t write(int fd, const void *buf, size_t count);  	
-			if(w_socket == -1)
-			{
-				fprintf(stderr,"An error occured while writing on the socket \n");
-				return;
-			}
-			
 		}
 	}		
 }
@@ -257,10 +262,10 @@ int wait_for_client(int sfd)
 {	
 	// 1. Intercepter le premier message reçu par le serveur, afin de connaître l'adresse du client via recvfrom()
 	
-	struct sockaddr_in6 src_addr; // pour s'assurer qu'il s'agisse d'une adresse IPv6
+	struct sockaddr_in6 client_addr; // pour s'assurer qu'il s'agisse d'une adresse IPv6
 	socklen_t addrlen = sizeof(struct sockaddr_in6);
 
-	ssize_t rec = recvfrom(sfd,NULL,0,MSG_PEEK,(struct sockaddr *) &src_addr,&addrlen);
+	ssize_t rec = recvfrom(sfd,NULL,0,MSG_PEEK,(struct sockaddr *) &client_addr,&addrlen);
 	// ssize_t recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len);
 	
 	if(rec ==-1) // si recvfrom plante
@@ -270,7 +275,7 @@ int wait_for_client(int sfd)
 	}
 
 	// 2. Connecter le socket du serveur au client via connect()
-	int connexion = connect(sfd, (struct sockaddr *) &src_addr,addrlen);
+	int connexion = connect(sfd, (struct sockaddr *) &client_addr,addrlen);
 	// int connect(int socket, const struct sockaddr *address, socklen_t address_len);
 	
 	if(connexion == -1) // Si ca plante
