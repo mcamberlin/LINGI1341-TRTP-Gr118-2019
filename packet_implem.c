@@ -4,6 +4,9 @@
 #include <string.h>
 #include <arpa/inet.h>
 
+//FREE !!!!!!!!!!!!!!!!!!
+
+
 
 /* Extra #includes */
 /* Your code will be inserted here */
@@ -11,12 +14,19 @@
 
 struct __attribute__((__packed__)) pkt {
 	//premier byte 
+/*
     ptypes_t type:2;
     uint8_t tr:1;
     uint8_t window:5;
+*/
+    uint8_t window:5;
+    uint8_t tr:1;
+    uint8_t type:2;
+
 	//second byte
-    uint8_t l:1;
-	uint16_t length:15;
+	uint16_t length; //il faut savoir que length est un varuint, c-a-d que son bit de poid fort indique si il mesure un ou deux bytes
+    //uint8_t l:1;
+
     uint8_t seqnum;
     uint32_t timestamp;
     uint32_t crc1;
@@ -24,6 +34,12 @@ struct __attribute__((__packed__)) pkt {
     uint32_t crc2;
 };
 
+/* return la valeur reelle du champ length c-a-d sans le premier bit l
+*/
+uint16_t realvalue(uint16_t pkt_length)
+{
+	return pkt_length & 0b0111111111111111;
+}
 
 void affichebin(char a)
 {
@@ -51,7 +67,7 @@ char getBit(const char c, int index)
  * @return: NULL en cas d'erreur */
 pkt_t* pkt_new()
 {
-    pkt_t* p = calloc(1,sizeof(pkt_t)); //initialise à zero
+    pkt_t* p = (pkt_t*) calloc(1,sizeof(pkt_t)); //initialise à zero
     if(p==NULL)
     {
         printf("allocation du nouveau paquet a echoue. \n");
@@ -66,7 +82,16 @@ pkt_t* pkt_new()
  */
 void pkt_del(pkt_t *pkt)
 {
-    free(pkt);
+    if(pkt!=NULL)
+	{
+        if(pkt->payload!=NULL)
+		{
+            free(pkt->payload);
+            pkt->payload=NULL;
+        }
+        free(pkt);
+        pkt=NULL;
+    }
 }
 
 /*
@@ -110,7 +135,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 	affichebin(*data);
     
     //pkt->type
-	int type = (int) (*data & 0b00000011);
+	int type = (int) (*data)>>6;
     if(type == 1)
     {
         pkt->type = PTYPE_DATA;
@@ -138,34 +163,30 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     }
     
     //pkt->tr;
-    pkt->tr = getBit(*data, 2);
-	printf("pkt->tr = %d\n", getBit(*data, 2));
+    pkt->tr = (*data<<2)>>7;
+	printf("pkt->tr = %d\n", getBit(*data, 5));
 	if(type!=PTYPE_DATA && pkt->tr!=0)
 	{
 		return E_TR;
 	}
     
     //pkt->window;
-    pkt->window = ((*data)>>3);
-	printf("pkt->windom = %d\n", (int) ((*data)>>3));
+    pkt->window = (*data) & 0b00011111;
+	printf("pkt->windom = %d\n", (int) pkt->window);
     
     //A partir d'ici on traite le deuxieme byte de data, ca va chier 
     ptr++;
     
-    //pkt->l
-    pkt->l = getBit(*(data+ptr), 0);
-	printf("pkt->l = %d\n", (int) getBit(*(data+ptr), 0));
-    
     //pkt->length
-    if(pkt->l == 0)
+	int l = varuint_predict_len((uint16_t) *(data+ptr));
+    if(l == 1)
     {
-        //length mesure 7 bits
-        pkt->length = (*(data+ptr))>>1; //le l disparait
-        if((pkt->length)>MAX_PAYLOAD_SIZE)
+        //length mesure 7 bits et l=0
+        pkt->length = ((*(data+ptr))<<1)>>1; //le l disparait
+        if((pkt->length)>MAX_PAYLOAD_SIZE) //securite en plus (varuint_predict_len le fait deja normalement)
         {
             return E_LENGTH;
         }
-        //pkt->length=htonl(pkt->length);
         ptr++;
         //verifie si le paquet a bien la bonne longueuer len
         //si L==0, longueur attedue = 12+longueur du payload
@@ -187,7 +208,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 		affichebin(*(data+ptr));
 		affichebin(*(data+ptr+1));
 		
-        uint16_t tmp = (((uint16_t) *(data+ptr))>>1)<<1 | (uint16_t) *(data+ptr+1)<<8;
+        uint16_t tmp = (((uint16_t) *(data+ptr))<<9)>>1 | (uint16_t) *(data+ptr+1); //retire le l
 		if(tmp > MAX_PAYLOAD_SIZE)
 		{
 			printf("Valeur du champ length (=%d) > 512", tmp);
@@ -244,6 +265,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
         pkt->payload = NULL;
     }
 	printf("pkt->payload = %d\n", *pkt->payload);
+	printf("adresse de pkt->paylaod = %p\n", pkt->payload);
     
     //pkt->crc2
     if(pkt->tr==1)
@@ -277,9 +299,9 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 
 	printf("Taille maxi: len = %ld\n", *len);
     
-    if((uint16_t)*len < (15 + pkt->l*1 + pkt->length))
+    if((uint16_t)*len < (15 + (pkt->length>>15)*1 + realvalue(pkt->length)))
     {
-		printf("encode, premier if. len = %ld; longueur totale = %d\n",*len, (15 + pkt->l*1 + pkt->length));
+		printf("encode, premier if. len = %ld; longueur totale = %d\n",*len, (15 + (pkt->length>>15)*1 + realvalue(pkt->length)));
         return E_NOMEM;
     }
 
@@ -297,10 +319,10 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 	affichebin(*(buf));
     
     //l, length
-    if(pkt->l == 0)
+	int l = varuint_predict_len(pkt->length);
+    if(l == 1)//length mesure 1 byte
     {
-		printf("pkt->l=0\n");
-		uint8_t pktlength = (uint8_t) (pkt->length)<<1; //decaler pour inserer le 0
+		uint8_t pktlength = (uint8_t) (pkt->length);
         memcpy(buf+ptr, &pktlength, 1);
 		printf("second byte de buf dans encode : ");
 		affichebin(*(buf+ptr));
@@ -308,10 +330,9 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
     }
     else
     {
-     	printf("pkt->l = 1 et ptr = %d\n", ptr);
         uint16_t tp = (pkt->length); //mettre en network byte order
 		printf("tp = %d\n", tp);
-        tp = htons(tp) + 1; //+ 1 pour mettre le l=1
+        tp = htons(tp) | (0b10000000)<<8; //met l=1
         memcpy(buf+ptr, &tp, 2);
 		printf("les deux bytes de length et l sont : \n");
 		affichebin(*(buf+ptr));
@@ -404,6 +425,10 @@ const char* pkt_get_payload(const pkt_t* pkt)
 pkt_status_code pkt_set_type(pkt_t *pkt, const ptypes_t type)
 {
     pkt->type=type;
+	if(pkt->type == 0)
+	{
+		return E_TYPE;
+	}
     return PKT_OK;
 }
 
@@ -454,33 +479,61 @@ pkt_status_code pkt_set_payload(pkt_t *pkt,
                                 const uint16_t length)
 {
     pkt->payload = (char*) malloc(length);
+	if(pkt->payload == NULL)
+	{
+		return E_NOMEM;
+	}
     memcpy(pkt->payload, data, length);
     return PKT_OK;
 }
 
-
+/*
+ * Decode un varuint (entier non signe de taille variable  dont le premier bit indique la longueur)
+ * encode en network byte-order dans le buffer data disposant d'une taille maximale len.
+ * @post: place Ã  l'adresse retval la valeur en host byte-order de l'entier de taille variable stocke
+ * dans data si aucune erreur ne s'est produite
+ * @return:
+ *
+ *          -1 si data ne contient pas un varuint valide (la taille du varint
+ * est trop grande par rapport Ã  la place disponible dans data)
+ *
+ *          le nombre de bytes utilises si aucune erreur ne s'est produite
+ */
 ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 {   
     //puisque en netword byte order : le bit qui donne la longueur est sur le deuxieme byte
-    int bit = *(data+1)>>7;
+    int bit = *data & 0b00000001;
     if(bit==1)//longueur de 2 by
     {
         if(len<2)
         {
             return -1;
         }
-        *retval = ( ((uint16_t) *(data)<<8) | (uint16_t) *(data+1) ) & 0b0111111111111111;
-        *retval = htonl(*retval);
+        *retval = (((uint16_t) *(data))>>1)<<1 | (uint16_t) *(data+1)<<8;
+        *retval = ntohl(*retval);
         return 2;
     }
-    *retval = (uint16_t) *data;
+	if(len<1)
+	{
+		return -1;
+	}
+    *retval = (uint16_t) ((*(data))>>1)<<1;
     return 1;
 }
 
+/*
+ * Encode un varuint en network byte-order dans le buffer data disposant d'une
+ * taille maximale len.
+ * @pre: val < 0x8000 (val peut Ãªtre encode en varuint)
+ * @return:
+ *           -1 si data ne contient pas une taille suffisante pour encoder le varuint
+ *
+ *           la taille necessaire pour encoder le varuint (1 ou 2 bytes) si aucune erreur ne s'est produite
+ */
 ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 {
     
-    int bit = val>>15;
+    int bit = val & 1;
     if(bit==0 && len>=1)
     {
         *data = (uint8_t) val;
@@ -494,34 +547,57 @@ ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
     return -1;
 }
 
+/*
+ * @pre: data pointe vers un buffer d'au moins 1 byte
+ * @return: la taille en bytes du varuint stocke dans data, soit 1 ou 2 bytes.
+ */
 size_t varuint_len(const uint8_t *data)
 {
-    if(*data>>7==0)
+    if(*data >> 7 == 1)
     {
-        return 1;
+        return 2;
     }
-    return 2;
+    return 1;
 }
 
 
+/*
+ * @return: la taille en bytes que prendra la valeur val
+ * une fois encodee en varuint si val contient une valeur varuint valide (val < 0x8000).
+            -1 si val ne contient pas une valeur varuint valide
+ */
 ssize_t varuint_predict_len(uint16_t val)
 {
-    char* ptr = (char*) &val;
-    if(*ptr>>7==0)
+	int l = val >>15;
+	uint16_t realvalue = val & 0b011111111111111; //retire le bit l
+    if(l==1)
     {
-        return 1;
-    } 
-    return 2;
+		if(realvalue>=MAX_PAYLOAD_SIZE)
+		{
+			return -1;
+		}
+        return 2;
+    }
+	if(realvalue>=MAX_PAYLOAD_SIZE)
+	{
+		return -1;
+	}
+    return 1;
 }
 
-
+/*
+ * Retourne la longueur du header en bytes si le champs pkt->length
+ * a une valeur valide pour un champs de type varuint (i.e. pkt->length < 0x8000).
+ * Retourne -1 sinon
+ * @pre: pkt contient une adresse valide (!= NULL)
+ */
 ssize_t predict_header_length(const pkt_t *pkt)
 {
-    if(pkt->l==0)
-    {
-        return 1;
-    }
-    return 2;
+    if(pkt->length>>15 == 0)
+	{
+		return 7;
+	}
+	return 8;
 }
 
 
@@ -543,28 +619,43 @@ int main()
 	pkt->type = 1;
 	pkt->tr = 0;
 	pkt->window = 7;
+	printf("premier byte de pkt : ");
+	affichebin(*(pk+ptr));
+
 	ptr++;
-	pkt->l=0;
-	pkt->length = 4;
-	if(pkt->l==0)
+	pkt->length = 4 | (0b10000000)<<8;
+	int reallength = pkt->length & 0b011111111111111;
+
+
+	printf("pkt->length:\n");
+	affichebin(*(pk+ptr));
+	affichebin(*(pk+ptr+1));
+	int l = varuint_predict_len(pkt->length);
+	printf("l = %d\n", l);
+	if(l==1)
 	{
 		printf("second byte de pkt : ");
 		affichebin(*(pk+ptr));
 		ptr++;
 	}
-	else
+	else if(l==2)
 	{
 		printf("deux bytes contenant length et l dans pkt : \n");
 		affichebin(*(pk+ptr));
 		affichebin(*(pk+ptr+1));
 		ptr+=2;
 	}
+	else
+	{
+		printf("mauvais format de length\n");
+		return -1;
+	}
 	pkt->seqnum = 13;
 	printf("pkt->seqnum : ");
 	affichebin(*(pk+ptr));
 	pkt->timestamp=78;
 	pkt->crc1 = 7889;
-	pkt->payload = (char*) malloc(pkt->length);
+	pkt->payload = (char*) malloc(reallength);
 	if(pkt->payload == NULL)
 	{
 		printf("plantage malloc pkt->payload");
@@ -572,6 +663,7 @@ int main()
 	}
 	*pkt->payload = 5; 
 	printf("pkt->payload = a\n");
+	printf("adresse de pkt->payload = %p\n", pkt->payload);
 	
 	pkt->crc2=7896;
 
@@ -583,13 +675,14 @@ int main()
 		return -1;
 	}
 
-	size_t len = (15 + pkt->l*1 + pkt->length);
+	size_t len = (15 + (pkt->length>>15)*1 + reallength);
 	pkt_status_code p = pkt_encode(pkt, buf, &len);
 	if(p!=PKT_OK)
 	{
 		printf("plantage pkt_encode, valeur de retour : %d\n", p);
 		return -1;
 	}
+	pkt_del(pkt);
 
 	pkt_t* pktRecu =  (pkt_t*) calloc(1,sizeof(pkt_t));
 	if(pktRecu==NULL)
@@ -609,6 +702,7 @@ int main()
 	free(pkt);
 	free(buf);
 	free(pktRecu);
+
 
 	return 0;
 
