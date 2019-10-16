@@ -532,19 +532,43 @@ ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
  */
 ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 {
-    
-    int bit = val & 1;
-    if(bit==0 && len>=1)
-    {
-        *data = (uint8_t) val;
-        return 1;
-    }
-    else if(len>=2)
-    {
-        memcpy(data, &val, 2);
-        return 2;
-    }
-    return -1;
+	uint8_t* t = (uint8_t*) &val+1;
+	size_t longueur = varuint_len(t);
+	printf("longueur = %ld\n", longueur);
+	if(longueur == 1 && len>=1)
+	{
+		uint8_t res = (uint8_t) (val>>8) ;
+		affichebin(*(&res));
+		memcpy(data, &res, 1);
+		affichebin(*data);
+		return longueur;
+	}
+	if(longueur == 2 && len>=2)
+	{
+		printf("varuint encode 2\n");
+		uint16_t tmp = val & 0b0111111111111111;
+		char* ptr = (char*) &tmp;
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+		uint8_t bit = ((uint8_t) tmp) & 0b00000001; //le bit à la place du trou 
+		printf("bit = %u\n", bit);
+		uint8_t ashift = (uint8_t) tmp;
+		ashift = ashift>>1;
+		tmp = htons(tmp);
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+		memcpy(((uint8_t*) &tmp)+1, &ashift, 1);
+		printf("shift\n");
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+		*(&tmp) = *(&tmp) | bit<<7;
+		tmp = tmp | 0b1000000000000000;
+		printf("FINAL : \n");
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+		memcpy(data, &tmp, 2);
+	}
+	return -1;
 }
 
 /*
@@ -553,7 +577,7 @@ ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
  */
 size_t varuint_len(const uint8_t *data)
 {
-    if(*data >> 7 == 1)
+    if(*data & 0b10000000)
     {
         return 2;
     }
@@ -568,20 +592,15 @@ size_t varuint_len(const uint8_t *data)
  */
 ssize_t varuint_predict_len(uint16_t val)
 {
-	int l = val >>15;
-	uint16_t realvalue = val & 0b011111111111111; //retire le bit l
-    if(l==1)
-    {
-		if(realvalue>=MAX_PAYLOAD_SIZE)
-		{
-			return -1;
-		}
-        return 2;
-    }
-	if(realvalue>=MAX_PAYLOAD_SIZE)
+	if(val<0x8000)
 	{
 		return -1;
 	}
+	int l = val & 0b1000000000000000;
+    if(l==0b1000000000000000)
+    {
+        return 2;
+    }
     return 1;
 }
 
@@ -606,6 +625,18 @@ ssize_t predict_header_length(const pkt_t *pkt)
 int main()
 {
 
+	if(1)
+	{
+		uint16_t test = 0b0110111101010101;
+		char* ptr = (char*) &test;
+		printf("binaire de départ : \n");
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+		uint8_t buffer = 0;
+		int taille = varuint_encode(test, &buffer, 2);
+		char* point = (char*) &buffer;
+		return -1;
+	}
 	pkt_t* pkt = (pkt_t*) calloc(1,sizeof(pkt_t));
 	if(pkt==NULL)
 	{
