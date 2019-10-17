@@ -573,7 +573,9 @@ ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 
 /*
  * @pre: data pointe vers un buffer d'au moins 1 byte
- * @return: la taille en bytes du varuint stocke dans data, soit 1 ou 2 bytes.
+ * @return: la taille en bytes du varuint stocke dans data, soit 1 ou 2 bytes.7
+
+	utiliser pour decode
  */
 size_t varuint_len(const uint8_t *data)
 {
@@ -589,6 +591,7 @@ size_t varuint_len(const uint8_t *data)
  * @return: la taille en bytes que prendra la valeur val
  * une fois encodee en varuint si val contient une valeur varuint valide (val < 0x8000).
             -1 si val ne contient pas une valeur varuint valide
+    Utiliser pour encode 
  */
 ssize_t varuint_predict_len(uint16_t val)
 {
