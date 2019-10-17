@@ -7,62 +7,90 @@
 #include <unistd.h> // pour read() et pour close()
 #include <errno.h>
 
-
-/** La fonction real_address() permet de convertir une chaîne de caractères représentant soit un nom de dommaine soit une adresse IPv6, en une structure  struct @sockaddr_in6 utilisable par l'OS 
- * @address: The name to resolve
- * @rval: Where the resulting IPv6 address descriptor should be stored
- * @return: 1 si l'operation reussi,
-           -1 si une erreur se produit, un message decrivant l'erreur est alors affiche sur la sortie standard d'erreur.
- */
-const char * real_address(const char *address, struct sockaddr_in6 *rval)
+/** ------------------ struct addrinfo ---------------------
 {
-    char *service = NULL;
-    struct addrinfo hints;
-    struct addrinfo *res;
-    int test;
-    
-    memset(&hints, 0, sizeof(struct addrinfo)); // void *memset(void *s, int c, size_t n);
+    * int              ai_family; the desired address family for the returned addresses. 
+    * int              ai_socktype; the preferred socket type
+    * int              ai_protocol; the protocol for the returned socket addresses. Specifying 0 for any protocol
 
-/* Structure de données addrinfo :
-struct addrinfo 
-{
-    * int              ai_family;
-This field specifies the desired address family for the returned addresses. Valid values for this field include AF_INET and AF_INET6. The value AF_UNSPEC indicates that getaddrinfo() should return socket addresses for any address family (either IPv4 or IPv6, for example) that can be used with node and service.
-    * int              ai_socktype; 
-This field specifies the preferred socket type, for example SOCK_STREAM or SOCK_DGRAM. Specifying 0 in this field indicates that socket addresses of any type can be returned by getaddrinfo().
-    * int              ai_protocol;
-This field specifies the protocol for the returned socket addresses. Specifying 0 in this field indicates that socket addresses with any protocol can be returned by getaddrinfo().
-
-All the other fields in the structure pointed to by hints must contain either 0 or a null pointer, as appropriate.
+     Other fields must contain either 0 or a null pointer, as appropriate.
     * int              ai_flags;
     * size_t           ai_addrlen;
     * struct sockaddr *ai_addr;
     * char            *ai_canonname;
     * struct addrinfo *ai_next;
 
-};
-*/ 
-    hints.ai_family = AF_INET6;     // La valeur AF_INET6 indique que getaddrinfo() ne devrait retourner que des adresses de socket de la famille IPv6.
+};*/ 
+
+/* ------------------ struct sockaddr_in6 ---------------------
+{
+               sa_family_t     sin6_family;    AF_INET6 
+               in_port_t       sin6_port;      port number
+               uint32_t        sin6_flowinfo;  IPv6 flow information 
+               struct in6_addr sin6_addr;      IPv6 address 
+               uint32_t        sin6_scope_id;  Scope ID (new in 2.4)
+};*/
+
+
+/* Erreur INGINIOUS
+[Client]source_addr est NULL
+[Client]Failed to create the socket!
+[Server]dest_addr est NULL
+[Server]Failed to create the socket!
+The process crashed! (There is still data to send on stdin, but the program stopped...)
+*/
+
+/** La fonction real_address() permet de convertir une chaîne de caractères représentant soit un nom de domaine soit une adresse IPv6, en une structure  struct @sockaddr_in6 utilisable par l'OS 
+ * @address: The name to resolve
+ * @rval: Where the resulting IPv6 address descriptor should be stored
+ * @return: NULL if it succeeded, or a pointer towards
+ *          a string describing the error if any.
+ *          (const char* means the caller cannot modify or free the return value,
+ *           so do not use malloc!)
+ */
+// Inspiré de la solution trouvée sur : https://github.com/ddo/c-iplookup/blob/master/main.c
+const char* real_address(const char *address, struct sockaddr_in6 *rval)
+{
+    // 1. Récupérer les informations concernant l'addresse
+    
+    struct addrinfo hints;
+    memset(&hint, 0, sizeof hint);
+    hints.ai_family = AF_INET6;     // AF_INET6 indique que getaddrinfo() ne devrait retourner que des adresses IPv6.
     hints.ai_socktype = SOCK_DGRAM; // Type de socket pour les protocoles UDP 
-    hints.ai_flags=AI_CANONNAME;
+    hints.ai_flags=AI_CANONNAME;   
+    /* Utile ?
     hints.ai_protocol = 0;          
     hints.ai_addrlen = 0;
     hints.ai_addr = NULL;
     hints.ai_canonname = NULL;
     hints.ai_next = NULL;
+    */
 
-    test = getaddrinfo(address, service, &hints, &res);
-    //int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
+    struct addrinfo *res;
+    char *service = NULL;
+
+    int test = getaddrinfo(address, service, &hints, &res);
+    //int getaddrinfo (const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
     if (test != 0) // Si ca plante 
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(test));
         return gai_strerror(test);
     } 
-    
-    memcpy(rval, res->ai_addr,sizeof(res->ai_addr));
-    // HELP - Cast en sock_addrin6 utile ? 
+ 
+    // !!! getaddrinfo() écrit dans res une liste de socket address structures returned respectant les critères de hints
+    // Avant de réécrire dans rval, il faut donc récupérer une structure de res
 
+
+    struct sockaddr_in6* adresseIPv6 = (struct sockaddr_in6*) res->ai_addr; 
+    
+    // 2. Copier le résultat de getaddrinfo() dans rval 
+    
+    memcpy(rval,adresseIPv6,sizeof(struct sockaddr_in6));
+    // void *memcpy(void *dest, const void *src, size_t n);
+    
+    // 3. Libérer res
     freeaddrinfo(res);
+
     return NULL;
 }
 
@@ -78,71 +106,72 @@ int create_socket( struct sockaddr_in6 *source_addr, int src_port, struct sockad
 {
 
 	// 0. Verifier les arguments
-	if(source_addr == NULL)
+	if(source_addr != NULL)
 	{ 
+		if(src_port <= 0)
+		{
+			fprintf(stderr, "src_port est zero ou negatif \n");
+			return -1;
+		}
+		if(dest_addr == NULL)
+		{
+			fprintf(stderr, "dest_addr est NULL \n");
+			return -1;
+		}
+		if(dst_port <= 0)
+		{
+			fprintf(stderr, "dst_port est zero ou negatif \n");
+			return -1;
+		}
+	    
+		/*struct sockaddr_in6 
+		{
+			sa_family_t     sin6_family;    AF_INET6 
+			in_port_t       sin6_port;      port number 
+			uint32_t        sin6_flowinfo;  IPv6 flow information 
+			struct in6_addr sin6_addr;      IPv6 address 
+			uint32_t        sin6_scope_id;  Scope ID (new in 2.4)
+		};*/
+		
+		source_addr->sin6_port = htons(src_port);
+		dest_addr->sin6_port = htons(dst_port);
+		
+		
+		// 1. Create a IPv6 socket supporting datagrams
+
+		int fd_src = socket(AF_INET6, SOCK_DGRAM, 0); 
+		//int socket(int domain, int type, int protocol); 
+		// AF_INET6 pour l'adresse en IPv6 et  SOCK_DGRAM pour UDP et 0 pour protocole par default. 
+		
+		if (fd_src == -1) 
+		{  
+			fprintf(stderr, "socket: %s , errno %d\n", strerror(fd_src), fd_src);
+			return -1;
+		}
+
+		// 2. Lier le socket avec la source using the bind() system call
+		size_t len_addr = sizeof(struct  sockaddr_in6);                      
+		int lien = bind(fd_src,(struct sockaddr*) source_addr, len_addr);
+		if(lien == -1)
+		{
+		    fprintf(stderr,"Erreur dans bind() \n");
+		    return -1;
+		}   
+		
+		// 3.Connect the socket to the address of the destination using the connect() system call
+		int connect_src = connect(fd_src,(struct sockaddr*) dest_addr, len_addr);
+		if(connect_src == -1)
+		{
+		    fprintf(stderr,"Erreur dans connect() \n");
+		    return -1;
+		}
+		return fd_src;    
+	}
+	else
+	{
 		fprintf(stderr, "source_addr est NULL \n");
 		return -1;
 	}
-	if(src_port <= 0)
-	{
-		fprintf(stderr, "src_port est zero ou negatif \n");
-		return -1;
-	}
-	if(dest_addr == NULL)
-	{
-		fprintf(stderr, "dest_addr est NULL \n");
-		return -1;
-	}
-	if(dst_port <= 0)
-	{
-		fprintf(stderr, "dst_port est zero ou negatif \n");
-		return -1;
-	}
-    
-/*struct sockaddr_in6 
-{
-	sa_family_t     sin6_family;    AF_INET6 
-	in_port_t       sin6_port;      port number 
-	uint32_t        sin6_flowinfo;  IPv6 flow information 
-	struct in6_addr sin6_addr;      IPv6 address 
-	uint32_t        sin6_scope_id;  Scope ID (new in 2.4)
-};
-*/
-	
-	source_addr->sin6_port = htons(src_port);
-	dest_addr->sin6_port = htons(dst_port);
-	
-        
-	// 1. Create a IPv6 socket supporting datagrams
-
-	int fd_src = socket(AF_INET6, SOCK_DGRAM, 0); 
-	//int socket(int domain, int type, int protocol); 
-	// AF_INET6 pour l'adresse en IPv6 et  SOCK_DGRAM pour UDP et 0 pour protocole par default. 
-	
-	if (fd_src == -1) 
-	{  
-		fprintf(stderr, "socket: %s , errno %d\n", strerror(fd_src), fd_src);
-		return -1;
-	}
-
-	// 2. Lier le socket avec la source using the bind() system call
-	size_t len_addr = sizeof(struct  sockaddr_in6);                      
-	int lien = bind(fd_src,(struct sockaddr*) source_addr, len_addr);
-        if(lien == -1)
-        {
-            fprintf(stderr,"Erreur dans bind() \n");
-            return -1;
-        }   
-        
-	// 3.Connect the socket to the address of the destination using the connect() system call
-	int connect_src = connect(fd_src,(struct sockaddr*) dest_addr, len_addr);
-	if(connect_src == -1)
-        {
-            fprintf(stderr,"Erreur dans connect() \n");
-            return -1;
-        }
-     
-	return fd_src;    
 }
 
 
@@ -288,6 +317,29 @@ int wait_for_client(int sfd)
 }
 
 
+
+
+int main()
+{
+	// 1. test implémentation real_address()
+	struct sockaddr_in6 rslt;
+	const char * monAdresse ="2a02:a03f:3afd:1600:73ba:ddbe:a4b1:9e3a";
+	real_address(monAdresse, &rslt); 
+	//const char * real_address(const char *address, struct sockaddr_in6 *rval)
+
+	
+/*struct sockaddr_in6 
+{
+	sa_family_t     sin6_family;    AF_INET6 
+	in_port_t       sin6_port;      port number 
+	uint32_t        sin6_flowinfo;  IPv6 flow information 
+	struct in6_addr sin6_addr;      IPv6 address 
+	uint32_t        sin6_scope_id;  Scope ID (new in 2.4)
+};
+*/
+
+	printf("%s",rslt.sin6_addr->s6_addr);
+}
 
 
 
