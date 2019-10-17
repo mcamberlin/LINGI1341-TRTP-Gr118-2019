@@ -548,47 +548,42 @@ ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
  *           -1 si data ne contient pas une taille suffisante pour encoder le varuint
  *
  *           la taille necessaire pour encoder le varuint (1 ou 2 bytes) si aucune erreur ne s'est produite
- * 		STRUCTURE VERS PAQUET
+ * 		STRUCTURE VERS DATA
  */
 ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 {
-	uint8_t* t = (uint8_t*) &val+1;
-	size_t longueur = varuint_predict_len(val);
-	printf("longueur = %ld\n", longueur);
-	if(longueur == 1 && len>=1)
+	ssize_t prediction =  varuint_predict_len(val);
+	fprintf(stderr," prediction : %ld \n", prediction);
+	if(prediction == 1 && len >=1) // La longueur est encodé sur un bit et le buffer data est suffisament grand
 	{
-		uint8_t res = (uint8_t) (val>>8) ;
-		affichebin(*(&res));
-		memcpy(data, &res, 1);
-		affichebin(*data);
-		return longueur;
+		uint8_t val8 = (uint8_t) val;
+		memcpy(data,&val8,1);
 	}
-	if(longueur == 2 && len>=2)
+	else if(prediction ==2 && len >=2)
 	{
-		printf("varuint encode 2\n");
-		uint16_t tmp = val & 0b0111111111111111;
-		char* ptr = (char*) &tmp;
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		uint8_t bit = ((uint8_t) tmp) & 0b00000001; //le bit à la place du trou 
-		printf("bit = %u\n", bit);
-		uint8_t ashift = (uint8_t) tmp;
-		ashift = ashift>>1;
-		tmp = htons(tmp);
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		memcpy(((uint8_t*) &tmp)+1, &ashift, 1);
-		printf("shift\n");
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		*(&tmp) = *(&tmp) | bit<<7;
-		tmp = tmp | 0b1000000000000000;
-		printf("FINAL : \n");
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		memcpy(data, &tmp, 2);
+		uint8_t tab[2];
+		memcpy(tab, &val,2);
+		affichebin(tab[1]);
+		affichebin(tab[0]);
+		
+		uint8_t futurBit = tab[0] & 0b00000001; //le bit que disparait 
+		affichebin(futurBit);
+		uint16_t* tmp = (uint16_t*) &tab[0];
+		*tmp = ntohs(*tmp);
+		tab[1] = (tab[1]>>1) | 0b10000000;
+		tab[0] = tab[0] | (futurBit<<7);
+		printf("FINAL\n");
+		affichebin(tab[1]);
+		affichebin(tab[0]);
+		memcpy(data, tab, 2);
+		
+		
 	}
-	return -1;
+	else
+	{
+		return -1;
+	}
+	
 }
 
 /*
@@ -611,7 +606,7 @@ size_t varuint_len(const uint8_t *data)
  * @return: la taille en bytes que prendra la valeur val
  * une fois encodee en varuint si val contient une valeur varuint valide (val < 0x8000).
             -1 si val ne contient pas une valeur varuint valide
-    Utiliser pour encode 
+    Utiliser pour encoder
  */
 ssize_t varuint_predict_len(uint16_t val)
 {
@@ -619,15 +614,12 @@ ssize_t varuint_predict_len(uint16_t val)
 	{
 		return -1;
 	}
-	if(val>=0b0000000100000000)
+
+	if(val>=256)
 	{
 		return 2;
 	}
-	else
-	{
-		return 1;
-	}
-	return -1;
+	return 1;
 }
 
 /*
@@ -655,9 +647,7 @@ int main()
 	uint8_t bin8 = (uint8_t) bin16;
 	affichebin(*(&bin8-1));
 	return -1;
-*/
-	if(1)
-	{
+
 //ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 		uint8_t a = 0b10111111;
 		uint8_t b = 0b00000000;
@@ -678,7 +668,23 @@ int main()
 		int taille = varuint_decode(ptr, 2, &buffer);
 		char* point = (char*) &buffer;
 		return -1;
+*/
+	
+	if(1)
+	{
+		uint16_t val = 16385; // Correspond à 01000000 00000001
+		uint8_t data [2];
+		size_t len = 2;
+		
+		 varuint_encode(val,data, len);
+		affichebin(*data);
+		affichebin(*(data+1));
+		return -1;
 	}
+	
+
+
+
 	pkt_t* pkt = (pkt_t*) calloc(1,sizeof(pkt_t));
 	if(pkt==NULL)
 	{
