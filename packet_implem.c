@@ -23,9 +23,10 @@ struct __attribute__((__packed__)) pkt {
     uint8_t tr:1;
     uint8_t type:2;
 
+    uint8_t l;
+
 	//second byte
 	uint16_t length; //il faut savoir que length est un varuint, c-a-d que son bit de poid fort indique si il mesure un ou deux bytes
-    //uint8_t l:1;
 
     uint8_t seqnum;
     uint32_t timestamp;
@@ -498,27 +499,45 @@ pkt_status_code pkt_set_payload(pkt_t *pkt,
  * est trop grande par rapport Ã  la place disponible dans data)
  *
  *          le nombre de bytes utilises si aucune erreur ne s'est produite
+ * 		PAQUET VERS STRUCTURE
  */
 ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 {   
-    //puisque en netword byte order : le bit qui donne la longueur est sur le deuxieme byte
-    int bit = *data & 0b00000001;
-    if(bit==1)//longueur de 2 by
-    {
-        if(len<2)
-        {
-            return -1;
-        }
-        *retval = (((uint16_t) *(data))>>1)<<1 | (uint16_t) *(data+1)<<8;
-        *retval = ntohl(*retval);
-        return 2;
-    }
-	if(len<1)
+	size_t longueur = varuint_len(data);
+	printf("longueur = %ld\n", longueur);
+	if(longueur == 1 && len>=1)
 	{
-		return -1;
+		printf("varuint decode 1\n");
+		uint8_t res = *data ;
+		memcpy(retval, data, 1);
+		affichebin((uint8_t) *retval);
+		return longueur;
 	}
-    *retval = (uint16_t) ((*(data))>>1)<<1;
-    return 1;
+	if(longueur == 2 && len>=2)
+	{
+		printf("varuint decode 2\n");
+		uint16_t tmp = (((uint16_t) *data) & 0b01111111) | ((uint16_t) *(data+1))<<8 ;
+		char* ptr = (uint8_t*) &tmp;
+		affichebin(*(ptr));
+		affichebin(*(ptr+1));
+		uint8_t bit = *(ptr) & 0b00000001; //le bit à la place du trou 
+		printf("bit = %u\n", bit);
+		uint8_t ashift = *(ptr+1);
+		ashift = ashift>>1;
+		tmp = ntohs(tmp);
+		affichebin(*(ptr));
+		affichebin(*(ptr+1));
+		memcpy(((uint8_t*) &tmp), &ashift, 1);
+		printf("shift\n");
+		affichebin(*(ptr));
+		affichebin(*(ptr+1));
+		tmp = tmp | (uint16_t) bit<<15;
+		printf("FINAL : \n");
+		affichebin(*(ptr));
+		affichebin(*(ptr+1));
+		memcpy(retval, &tmp, 2);
+	}
+	return -1;
 }
 
 /*
@@ -529,11 +548,12 @@ ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
  *           -1 si data ne contient pas une taille suffisante pour encoder le varuint
  *
  *           la taille necessaire pour encoder le varuint (1 ou 2 bytes) si aucune erreur ne s'est produite
+ * 		STRUCTURE VERS PAQUET
  */
 ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 {
 	uint8_t* t = (uint8_t*) &val+1;
-	size_t longueur = varuint_len(t);
+	size_t longueur = varuint_predict_len(val);
 	printf("longueur = %ld\n", longueur);
 	if(longueur == 1 && len>=1)
 	{
@@ -573,13 +593,13 @@ ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 
 /*
  * @pre: data pointe vers un buffer d'au moins 1 byte
- * @return: la taille en bytes du varuint stocke dans data, soit 1 ou 2 bytes.7
+ * @return: la taille en bytes du varuint stocke dans data, soit 1 ou 2 bytes.
 
 	utiliser pour decode
  */
 size_t varuint_len(const uint8_t *data)
 {
-    if(*data & 0b10000000)
+    if(*(data)>>7)
     {
         return 2;
     }
@@ -595,16 +615,19 @@ size_t varuint_len(const uint8_t *data)
  */
 ssize_t varuint_predict_len(uint16_t val)
 {
-	if(val<0x8000)
+	if(val>=0x8000)
 	{
 		return -1;
 	}
-	int l = val & 0b1000000000000000;
-    if(l==0b1000000000000000)
-    {
-        return 2;
-    }
-    return 1;
+	if(val>=0b0000000100000000)
+	{
+		return 2;
+	}
+	else
+	{
+		return 1;
+	}
+	return -1;
 }
 
 /*
@@ -627,16 +650,32 @@ ssize_t predict_header_length(const pkt_t *pkt)
 
 int main()
 {
-
+/*
+	uint16_t bin16 = 0b0101010111111111;
+	uint8_t bin8 = (uint8_t) bin16;
+	affichebin(*(&bin8-1));
+	return -1;
+*/
 	if(1)
 	{
-		uint16_t test = 0b0110111101010101;
+//ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
+		uint8_t a = 0b10111111;
+		uint8_t b = 0b00000000;
+		uint8_t test[2] = {a,b}; 
+		
+		uint8_t c = 0b11111111;
+		uint8_t d = 0b00000000;
+		//test = (uint16_t) c<<8 | (uint16_t) d; 		
+		
+		
+		
+
 		char* ptr = (char*) &test;
 		printf("binaire de départ : \n");
-		affichebin(*(ptr+1));
 		affichebin(*(ptr));
-		uint8_t buffer = 0;
-		int taille = varuint_encode(test, &buffer, 2);
+		affichebin(*(ptr+1));
+		uint16_t buffer = 0;
+		int taille = varuint_decode(ptr, 2, &buffer);
 		char* point = (char*) &buffer;
 		return -1;
 	}
