@@ -3,6 +3,7 @@
 #include <stdlib.h> // pour calloc, malloc, free
 #include <string.h>
 #include <arpa/inet.h>
+#include <zlib.h> //crc32
 
 //FREE !!!!!!!!!!!!!!!!!!
 
@@ -175,63 +176,18 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     pkt->window = (*data) & 0b00011111;
 	printf("pkt->windom = %d\n", (int) pkt->window);
     
-    //A partir d'ici on traite le deuxieme byte de data, ca va chier 
+    //A partir d'ici on traite le deuxieme byte de data
     ptr++;
     
     //pkt->length
-	int l = varuint_predict_len((uint16_t) *(data+ptr));
-    if(l == 1)
-    {
-        //length mesure 7 bits et l=0
-        pkt->length = ((*(data+ptr))<<1)>>1; //le l disparait
-        if((pkt->length)>MAX_PAYLOAD_SIZE) //securite en plus (varuint_predict_len le fait deja normalement)
-        {
-            return E_LENGTH;
-        }
-        ptr++;
-        //verifie si le paquet a bien la bonne longueuer len
-        //si L==0, longueur attedue = 12+longueur du payload
-		/*
-        if((uint16_t) len!=(pkt->length+15))
-        {
-			printf("le paquet est inconscient\n");
-            return E_UNCONSISTENT;
-        }
-		*/
-		//on traite les erreurs a la fin 
-		printf("pkt->length = %d\n", pkt->length);
-    }
-    else
-    {
-        //length mesure 15 bits
-		// [--------][-------l]
-		printf("length dans data : \n");
-		affichebin(*(data+ptr));
-		affichebin(*(data+ptr+1));
-		
-        uint16_t tmp = (((uint16_t) *(data+ptr))<<9)>>1 | (uint16_t) *(data+ptr+1); //retire le l
-		if(tmp > MAX_PAYLOAD_SIZE)
-		{
-			printf("Valeur du champ length (=%d) > 512", tmp);
-			return E_LENGTH;
-		}
+	//ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 
-		printf("length dans tmp : \n");
-		affichebin((char) tmp);
-		affichebin(*( (char*) (&tmp) +1));
-
-        pkt->length=ntohs(tmp);
-		printf("pkt->length (sur 15 bits) = %d\n", pkt->length);
-        
-        //verifie si le paquet a bien la bonne longueuer len
-        //si L==1, longueur attendue = 16+longueur du payload
-        if((uint16_t) len!=(pkt->length)+16)
-        {
-            return E_UNCONSISTENT;
-        }
-
-        ptr=ptr+2;
-    }
+	int a = varuint_decode(data+ptr, len-ptr, &(pkt->length));
+	if(a==-1)
+	{
+		return E_LENGTH;
+	}
+	ptr=ptr+a;
     
     //pkt->seqnum;
     pkt->seqnum = *(data+ptr);
@@ -247,6 +203,10 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     //pkt->crc1
     pkt->crc1= ((uint32_t)*(data+ptr+3))<<24 | ((uint32_t)*(data+ptr+2))<<16 | ((uint32_t)*(data+ptr+1))<<8 | (uint32_t)*(data+ptr);
     pkt->crc1=ntohl(pkt->crc1);
+	if(pkt->crc1 != crc32(pkt->crc1, data+predict_header_length(pkt) , 4))
+	{
+		return E_CRC;
+	}
 	printf("pkt->crc1 = %d\n", pkt->crc1);
     ptr=ptr+4;
     
@@ -274,6 +234,10 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
         pkt->crc2 = ((uint32_t)*(data+ptr+3))<<24 | ((uint32_t)*(data+ptr+2))<<16 | ((uint32_t)*(data+ptr+1))<<8 | (uint32_t)*(data+ptr);
     }
     pkt->crc2=ntohl(pkt->crc2);
+	if(pkt->crc2 != crc32(pkt->crc2, data+predict_header_length(pkt)+4 , pkt->length))
+	{
+		return E_CRC;
+	}
 	printf("pkt->crc2 = %d\n", pkt->crc2);
     
     return PKT_OK;
@@ -320,26 +284,13 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 	affichebin(*(buf));
     
     //l, length
-	int l = varuint_predict_len(pkt->length);
-    if(l == 1)//length mesure 1 byte
-    {
-		uint8_t pktlength = (uint8_t) (pkt->length);
-        memcpy(buf+ptr, &pktlength, 1);
-		printf("second byte de buf dans encode : ");
-		affichebin(*(buf+ptr));
-        ptr++;
-    }
-    else
-    {
-        uint16_t tp = (pkt->length); //mettre en network byte order
-		printf("tp = %d\n", tp);
-        tp = htons(tp) | (0b10000000)<<8; //met l=1
-        memcpy(buf+ptr, &tp, 2);
-		printf("les deux bytes de length et l sont : \n");
-		affichebin(*(buf+ptr));
-		affichebin(*(buf+ptr+1));
-        ptr=ptr+2;
-    }
+	//ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
+	int a = varuint_encode(pkt->length, buf+ptr, *len);
+	if(a==-1)
+	{
+		return E_LENGTH;
+	}
+		
 	printf("fin length\n");
     
     //seqnum
@@ -561,22 +512,32 @@ ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 	}
 	else if(prediction ==2 && len >=2)
 	{
-		uint8_t tab[2];
-		memcpy(tab, &val,2);
-		affichebin(tab[1]);
-		affichebin(tab[0]);
-		
-		uint8_t futurBit = tab[0] & 0b00000001; //le bit que disparait 
-		affichebin(futurBit);
-		uint16_t* tmp = (uint16_t*) &tab[0];
-		*tmp = ntohs(*tmp);
-		tab[1] = (tab[1]>>1) | 0b10000000;
-		tab[0] = tab[0] | (futurBit<<7);
+
+		uint16_t tmp = val; //pour ne pas changer la vameur de val 
+
+		uint8_t* ptr = (uint8_t*) &tmp; //parcourir byte à byte
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+
+		uint8_t futurbit = *ptr & 0b00000001;
+		printf("futur bit\n");
+		affichebin(futurbit);
+
+		tmp = ntohs(tmp);
+		printf("ntohs\n");
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+
+		*(ptr+1) = *(ptr+1)>>1 | 0b10000000;
+		*ptr = *ptr | futurbit<<7;
 		printf("FINAL\n");
-		affichebin(tab[1]);
-		affichebin(tab[0]);
-		memcpy(data, tab, 2);
-		
+		affichebin(*(ptr+1));
+		affichebin(*(ptr));
+
+		memcpy(data, ptr+1, 1);
+		memcpy(data+1, ptr, 1);
+
+		return 2;
 		
 	}
 	else
@@ -672,13 +633,18 @@ int main()
 	
 	if(1)
 	{
-		uint16_t val = 16385; // Correspond à 01000000 00000001
+		uint16_t val = 28933	; 
+		char* p = (char*) &val;
+		printf("a la base\n");
+		affichebin(*(p+1));
+		affichebin(*(p));
 		uint8_t data [2];
 		size_t len = 2;
 		
-		 varuint_encode(val,data, len);
-		affichebin(*data);
+		varuint_encode(val,data, len);
+		affichebin(*(data));
 		affichebin(*(data+1));
+		printf("valeur = %d\n", *data);
 		return -1;
 	}
 	
