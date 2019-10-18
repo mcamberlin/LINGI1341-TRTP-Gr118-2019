@@ -208,7 +208,7 @@ void read_write_loop(int sfd)
 		filedescriptors[0] = pfd;
 
 		nfds_t nfds = 1;
-		int timeout = 0; //poll() shall wait for an event to occur 
+		int timeout = -1; //poll() shall wait for an event to occur 
 		
 		int p = poll(filedescriptors,nfds, timeout); 
 		// int poll(struct pollfd fds[], nfds_t nfds, int timeout);
@@ -218,7 +218,7 @@ void read_write_loop(int sfd)
 			return;
 		}
 
-		if(POLLIN) // Si un événement est détecté via poll
+		if(pfd.revents & POLLIN) // Si un événement est détecté via poll
 		{
 			// 1. Remettre les buffers à 0 avant d'écrire dedans:	
 			memset(buffer_stdin,0,MAXSIZE);
