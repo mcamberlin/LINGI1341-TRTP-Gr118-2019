@@ -4,54 +4,38 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-//FREE !!!!!!!!!!!!!!!!!!
 
 
+struct __attribute__((__packed__)) pkt 
+{
+	// 1er Octet
+	uint8_t window:5;
+	uint8_t tr:1;
+	uint8_t type:2;
 
-/* Extra #includes */
-/* Your code will be inserted here */
+	// 2eme et 3eme Octet
+	uint16_t length; // ! Attention ! length est un varuint: son bit de poid fort indique s'il mesure un ou deux octets
 
-
-struct __attribute__((__packed__)) pkt {
-	//premier byte 
-/*
-    ptypes_t type:2;
-    uint8_t tr:1;
-    uint8_t window:5;
-*/
-    uint8_t window:5;
-    uint8_t tr:1;
-    uint8_t type:2;
-
-    uint8_t l;
-
-	//second byte
-	uint16_t length; //il faut savoir que length est un varuint, c-a-d que son bit de poid fort indique si il mesure un ou deux bytes
-
-    uint8_t seqnum;
-    uint32_t timestamp;
-    uint32_t crc1;
-    char* payload ; // utiliser un pointeur est plus intéressant au point de vue des performances et de la consommation de la mémoire. L'espace memoire est alloue grace a un malloc (paylaod=mallo(...)) (pas oublier free(...))
-    uint32_t crc2;
+	uint8_t seqnum;
+	uint32_t timestamp;
+	uint32_t crc1;
+	char* payload ; // utiliser un pointeur est plus intéressant au point de vue des performances et de la consommation de la mémoire. L'espace memoire est alloue grace a un malloc (paylaod=mallo(...)) (pas oublier free(...))
+	uint32_t crc2;
 };
 
-/* return la valeur reelle du champ length c-a-d sans le premier bit l
-*/
-uint16_t realvalue(uint16_t pkt_length)
-{
-	return pkt_length & 0b0111111111111111;
-}
 
-void affichebin(char a)
+/* Alloue et initialise une struct pkt
+ * @return: NULL en cas d'erreur */
+pkt_t* pkt_new()
 {
-    int i = 0;
- 
-    for(i = 7 ; i >=0 ; i--)
+    pkt_t* p = (pkt_t*) calloc(0,sizeof(pkt_t)); //initialise à zero
+    if(p==NULL)
     {
-        int res = a>>i & 1;
-		printf("%d", res);
+        printf("allocation du nouveau paquet a echoue. \n");
+        return NULL;
     }
-	printf("\n");
+    
+    return p;
 }
 
 
@@ -63,37 +47,23 @@ char getBit(const char c, int index)
     return ((buffer>>index) & 1);
 }
 
-
-/* Alloue et initialise une struct pkt
- * @return: NULL en cas d'erreur */
-pkt_t* pkt_new()
-{
-    pkt_t* p = (pkt_t*) calloc(1,sizeof(pkt_t)); //initialise à zero
-    if(p==NULL)
-    {
-        printf("allocation du nouveau paquet a echoue. \n");
-        return NULL;
-    }
-    
-    return p;
-}
-
 /* Libere le pointeur vers la struct pkt, ainsi que toutes les
  * ressources associees
  */
 void pkt_del(pkt_t *pkt)
 {
-    if(pkt!=NULL)
+	if(pkt!=NULL)
 	{
-        if(pkt->payload!=NULL)
+		if(pkt->payload!=NULL)
 		{
-            free(pkt->payload);
-            pkt->payload=NULL;
-        }
+			free(pkt->payload);
+			pkt->payload=NULL;
+		}
         free(pkt);
         pkt=NULL;
-    }
+    	}
 }
+
 
 /*
  * Decode des donnees recues et cree une nouvelle structure pkt.
@@ -129,7 +99,7 @@ typedef enum {
 */
 pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 {
-	printf("-----DEBUT DECODE-----\n");
+	
     int ptr=0; //"pointeur servant à parcourir data"
 
 	printf("Premier byte de data dans decode : ");
@@ -425,24 +395,62 @@ const char* pkt_get_payload(const pkt_t* pkt)
 
 pkt_status_code pkt_set_type(pkt_t *pkt, const ptypes_t type)
 {
-    pkt->type=type;
-	if(pkt->type == 0)
+	if(type==PTYPE_DATA)
+	{
+		pkt->type=1;
+		return PKT_OK;
+	}
+	else if(type==PTYPE_ACK)
+	{
+		pkt->type=2;
+		return PKT_OK;
+    	}
+	else if(type==PTYPE_NACK)
+	{
+		pkt->type=3;
+		return PKT_OK;
+	}
+	else
 	{
 		return E_TYPE;
 	}
-    return PKT_OK;
 }
 
 pkt_status_code pkt_set_tr(pkt_t *pkt, const uint8_t tr)
 {
-    pkt->tr=tr;
-    return PKT_OK;
+	if(pkt == NULL)
+	{
+		return E_TR;
+	}
+	else if(pkt->type != 1)
+	{	
+		return E_TR;
+	} 
+	else
+	{
+		pkt->tr=tr;
+		return PKT_OK;
+	}	
 }
+
 
 pkt_status_code pkt_set_window(pkt_t *pkt, const uint8_t window)
 {
-    pkt->window=window;
-    return PKT_OK;
+	if(pkt == NULL)
+	{
+		fprintf(stderr,"Le pointeur pkt est NULL \n");
+		return E_WINDOW;
+	}
+	else if(window >=0 && window<=31 )
+	{
+		fprintf(stderr,"La fenetre n'est pas comprise entre 0 et 31 alors qu'elle est encodee sur 5 bits \n");
+		return E_WINDOW;
+	}
+	else 
+	{
+		pkt->window=window;
+		return PKT_OK;
+	}
 }
 
 pkt_status_code pkt_set_seqnum(pkt_t *pkt, const uint8_t seqnum)
@@ -469,143 +477,143 @@ pkt_status_code pkt_set_crc1(pkt_t *pkt, const uint32_t crc1)
     return PKT_OK;
 }
 
+/* Defini la valeur du champs payload du paquet.
+ * @data: Une succession d'octets representants le payload
+ * @length: Le nombre d'octets composant le payload
+ * @POST: pkt_get_length(pkt) == length */
+pkt_status_code pkt_set_payload(pkt_t *pkt, const char *data, const uint16_t length)
+{
+	if(length>MAX_PAYLOAD_SIZE) //voir packet_interface.h
+	{
+		return E_NOMEM;
+	}
+	if((data==NULL)||(length == 0)) // s'il n'y a pas de payload a setter
+	{
+	        return PKT_OK;
+    	}
+	if(pkt->payload!=NULL) // Libérer l'éventuel payload précédent
+	{
+		free(pkt->payload);
+		pkt->payload=NULL;
+		pkt->length=0;
+	}
+	pkt->payload = (char*) malloc(length);
+	if(pkt->payload == NULL)
+	{
+		return E_NOMEM;
+	}
+	memcpy(pkt->payload, data, length);
+	return PKT_OK;   
+}
+
+/* Setter pour CRC2. Les valeurs fournies sont dans l'endianness
+ * native de la machine!
+ */
 pkt_status_code pkt_set_crc2(pkt_t *pkt, const uint32_t crc2)
 {
     pkt->crc2=crc2;
     return PKT_OK;
 }
 
-pkt_status_code pkt_set_payload(pkt_t *pkt,
-                                const char *data,
-                                const uint16_t length)
-{
-    pkt->payload = (char*) malloc(length);
-	if(pkt->payload == NULL)
-	{
-		return E_NOMEM;
-	}
-    memcpy(pkt->payload, data, length);
-    return PKT_OK;
-}
-
 /*
  * Decode un varuint (entier non signe de taille variable  dont le premier bit indique la longueur)
  * encode en network byte-order dans le buffer data disposant d'une taille maximale len.
- * @post: place Ã  l'adresse retval la valeur en host byte-order de l'entier de taille variable stocke
+ * @post: place a l'adresse retval la valeur en host byte-order de l'entier de taille variable stocke
  * dans data si aucune erreur ne s'est produite
  * @return:
- *
  *          -1 si data ne contient pas un varuint valide (la taille du varint
- * est trop grande par rapport Ã  la place disponible dans data)
+ * est trop grande par rapport a la place disponible dans data)
  *
  *          le nombre de bytes utilises si aucune erreur ne s'est produite
- * 		PAQUET VERS STRUCTURE
  */
 ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
-{   
-	size_t longueur = varuint_len(data);
-	printf("longueur = %ld\n", longueur);
-	if(longueur == 1 && len>=1)
+{
+	size_t nbBytes = varuint_predict_len(data);
+	if(len < nbBytes)
 	{
-		printf("varuint decode 1\n");
-		uint8_t res = *data ;
-		memcpy(retval, data, 1);
-		affichebin((uint8_t) *retval);
-		return longueur;
+		fprintf(stderr,"La taille du buffer est insuffisante \n");
+		return -1;
 	}
-	if(longueur == 2 && len>=2)
+	else if(nbBytes == 1)
 	{
-		printf("varuint decode 2\n");
-		uint16_t tmp = (((uint16_t) *data) & 0b01111111) | ((uint16_t) *(data+1))<<8 ;
-		char* ptr = (uint8_t*) &tmp;
-		affichebin(*(ptr));
-		affichebin(*(ptr+1));
-		uint8_t bit = *(ptr) & 0b00000001; //le bit à la place du trou 
-		printf("bit = %u\n", bit);
-		uint8_t ashift = *(ptr+1);
-		ashift = ashift>>1;
-		tmp = ntohs(tmp);
-		affichebin(*(ptr));
-		affichebin(*(ptr+1));
-		memcpy(((uint8_t*) &tmp), &ashift, 1);
-		printf("shift\n");
-		affichebin(*(ptr));
-		affichebin(*(ptr+1));
-		tmp = tmp | (uint16_t) bit<<15;
-		printf("FINAL : \n");
-		affichebin(*(ptr));
-		affichebin(*(ptr+1));
-		memcpy(retval, &tmp, 2);
+		*retVal = 0b01111111 & *data;
+		return nbBytes;
 	}
-	return -1;
+	else if(nbBytes == 2)
+	{
+		uint16_t* tmp = (uint16_t*) data;
+		tmp = ntohs(*tmp); //Convert in network to host byte order
+		*retval = 0b0111111111111111 & tmp; // Mettre le premier bit a O
+		return nbBytes;
+	}
+	else
+	{
+		fprintf(stderr,"Le nombre de byte est incoherent: %d \n",nbBytes);
+		return -1;
+	}
 }
+
 
 /*
  * Encode un varuint en network byte-order dans le buffer data disposant d'une
  * taille maximale len.
- * @pre: val < 0x8000 (val peut Ãªtre encode en varuint)
+ * @pre: val < 0x8000 (val peut etre encode en varuint)
  * @return:
  *           -1 si data ne contient pas une taille suffisante pour encoder le varuint
  *
  *           la taille necessaire pour encoder le varuint (1 ou 2 bytes) si aucune erreur ne s'est produite
- * 		STRUCTURE VERS PAQUET
  */
 ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 {
-	uint8_t* t = (uint8_t*) &val+1;
-	size_t longueur = varuint_predict_len(val);
-	printf("longueur = %ld\n", longueur);
-	if(longueur == 1 && len>=1)
+	if(val >= 0x8000) // Programmation defensive
 	{
-		uint8_t res = (uint8_t) (val>>8) ;
-		affichebin(*(&res));
-		memcpy(data, &res, 1);
-		affichebin(*data);
-		return longueur;
+		fprintf(stderr,"val est superieur a 0X8000 \n");
+		return -1;
 	}
-	if(longueur == 2 && len>=2)
+	uint8_t nbBytes = varuint_predict_len(val);
+	if(nbBytes<len)
 	{
-		printf("varuint encode 2\n");
-		uint16_t tmp = val & 0b0111111111111111;
-		char* ptr = (char*) &tmp;
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		uint8_t bit = ((uint8_t) tmp) & 0b00000001; //le bit à la place du trou 
-		printf("bit = %u\n", bit);
-		uint8_t ashift = (uint8_t) tmp;
-		ashift = ashift>>1;
+		fprintf(stderr,"La taille du buffer est insuffisante \n");
+		return -1;
+	}
+	
+	if(nbBytes == 1)
+	{
+		memcpy(data, &val,1);
+		return nbBytes;
+	}
+	else if( nbBytes == 2)
+	{
+		uint16_t tmp = val + 0x8000; // mettre le premier bit à 1
 		tmp = htons(tmp);
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		memcpy(((uint8_t*) &tmp)+1, &ashift, 1);
-		printf("shift\n");
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		*(&tmp) = *(&tmp) | bit<<7;
-		tmp = tmp | 0b1000000000000000;
-		printf("FINAL : \n");
-		affichebin(*(ptr+1));
-		affichebin(*(ptr));
-		memcpy(data, &tmp, 2);
+		memcpy(data,&tmp,nbBytes); // Convert in network byte-order
+		return nbBytes;
 	}
-	return -1;
+	else
+	{
+		fprintf(stderr,"Le nombre de byte est incoherent: %d \n",nbBytes);
+		return -1;
+	}
 }
 
 /*
  * @pre: data pointe vers un buffer d'au moins 1 byte
  * @return: la taille en bytes du varuint stocke dans data, soit 1 ou 2 bytes.
-
-	utiliser pour decode
  */
 size_t varuint_len(const uint8_t *data)
 {
-    if(*(data)>>7)
-    {
-        return 2;
-    }
-    return 1;
-}
+	if(data == NULL)
+	{
+		fprintf(stderr,"Le pointeur data est NULL \n");
+		return -1;
+	}
 
+	if(*(data)>>7)
+	{
+		return 2;
+	}
+	return 1;
+}
 
 /*
  * @return: la taille en bytes que prendra la valeur val
@@ -615,11 +623,12 @@ size_t varuint_len(const uint8_t *data)
  */
 ssize_t varuint_predict_len(uint16_t val)
 {
-	if(val>=0x8000)
+	if(val>=0x8000) // Programmation defensive
 	{
+		fprintf("Val est superieur ou egal a Ox8000\n");
 		return -1;
 	}
-	if(val>=0b0000000100000000)
+	if(val>=128)
 	{
 		return 2;
 	}
@@ -638,147 +647,36 @@ ssize_t varuint_predict_len(uint16_t val)
  */
 ssize_t predict_header_length(const pkt_t *pkt)
 {
-    if(pkt->length>>15 == 0)
+	if(pkt == NULL) // Programmation defensive
 	{
-		return 7;
+		fprintf(stderr, "Le pointeur pkt est NULL \n");
 	}
-	return 8;
+	ssize_t nbByteLength = varuint_predict_len(pkt->length);
+	return 6 + nbByteLength;
 }
 
 
 
 
-int main()
-{
-/*
-	uint16_t bin16 = 0b0101010111111111;
-	uint8_t bin8 = (uint8_t) bin16;
-	affichebin(*(&bin8-1));
-	return -1;
+
+
+/* -------------------------------- FONCTION INUTILE ? ----------------------------------------- */
+/* return la valeur reelle du champ length c-a-d sans le premier bit l
 */
-	if(1)
-	{
-//ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
-		uint8_t a = 0b10111111;
-		uint8_t b = 0b00000000;
-		uint8_t test[2] = {a,b}; 
-		
-		uint8_t c = 0b11111111;
-		uint8_t d = 0b00000000;
-		//test = (uint16_t) c<<8 | (uint16_t) d; 		
-		
-		
-		
-
-		char* ptr = (char*) &test;
-		printf("binaire de départ : \n");
-		affichebin(*(ptr));
-		affichebin(*(ptr+1));
-		uint16_t buffer = 0;
-		int taille = varuint_decode(ptr, 2, &buffer);
-		char* point = (char*) &buffer;
-		return -1;
-	}
-	pkt_t* pkt = (pkt_t*) calloc(1,sizeof(pkt_t));
-	if(pkt==NULL)
-	{
-		printf("plantage malloc");
-		return -1;
-	}
-	
-	int ptr = 0;
-	char* pk = (char*) pkt;
-
-	pkt->type = 1;
-	pkt->tr = 0;
-	pkt->window = 7;
-	printf("premier byte de pkt : ");
-	affichebin(*(pk+ptr));
-
-	ptr++;
-	pkt->length = 4 | (0b10000000)<<8;
-	int reallength = pkt->length & 0b011111111111111;
-
-
-	printf("pkt->length:\n");
-	affichebin(*(pk+ptr));
-	affichebin(*(pk+ptr+1));
-	int l = varuint_predict_len(pkt->length);
-	printf("l = %d\n", l);
-	if(l==1)
-	{
-		printf("second byte de pkt : ");
-		affichebin(*(pk+ptr));
-		ptr++;
-	}
-	else if(l==2)
-	{
-		printf("deux bytes contenant length et l dans pkt : \n");
-		affichebin(*(pk+ptr));
-		affichebin(*(pk+ptr+1));
-		ptr+=2;
-	}
-	else
-	{
-		printf("mauvais format de length\n");
-		return -1;
-	}
-	pkt->seqnum = 13;
-	printf("pkt->seqnum : ");
-	affichebin(*(pk+ptr));
-	pkt->timestamp=78;
-	pkt->crc1 = 7889;
-	pkt->payload = (char*) malloc(reallength);
-	if(pkt->payload == NULL)
-	{
-		printf("plantage malloc pkt->payload");
-		return -1;
-	}
-	*pkt->payload = 5; 
-	printf("pkt->payload = a\n");
-	printf("adresse de pkt->payload = %p\n", pkt->payload);
-	
-	pkt->crc2=7896;
-
-
-	char* buf = (char*) malloc(sizeof(pkt_t));
-	if(buf==NULL)
-	{
-		printf("plantage malloc\n");
-		return -1;
-	}
-
-	size_t len = (15 + (pkt->length>>15)*1 + reallength);
-	pkt_status_code p = pkt_encode(pkt, buf, &len);
-	if(p!=PKT_OK)
-	{
-		printf("plantage pkt_encode, valeur de retour : %d\n", p);
-		return -1;
-	}
-	pkt_del(pkt);
-
-	pkt_t* pktRecu =  (pkt_t*) calloc(1,sizeof(pkt_t));
-	if(pktRecu==NULL)
-	{
-		printf("plantage malloc\n");
-		return -1;
-	}
-
-
-	pkt_status_code m = pkt_decode(buf, sizeof(buf), pktRecu);
-	if(m!=PKT_OK)
-	{
-		printf("plantage pkt_decode, valeur de retour : %d\n", m);
-		return -1;
-	}
-
-	free(pkt);
-	free(buf);
-	free(pktRecu);
-
-
-	return 0;
-
+uint16_t realvalue(uint16_t pkt_length)
+{
+	return pkt_length & 0b0111111111111111;
+}
+void affichebin(char a)
+{
+    int i = 0;
+ 
+    for(i = 7 ; i >=0 ; i--)
+    {
+        int res = a>>i & 1;
+		printf("%d", res);
+    }
+	printf("\n");
 }
 
 
