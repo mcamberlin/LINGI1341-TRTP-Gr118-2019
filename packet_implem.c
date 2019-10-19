@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <zlib.h>
+//realise avec l'aide de Antoine Caytan 
 
 struct __attribute__((__packed__)) pkt 
 {
@@ -31,7 +32,7 @@ pkt_t* pkt_new()
     pkt_t* p = (pkt_t*) calloc(1,sizeof(pkt_t)); //initialise à zero
     if(p==NULL)
     {
-        printf("allocation du nouveau paquet a echoue. \n");
+        fprintf(stderr,"allocation du nouveau paquet a echoue. \n");
         return NULL;
     }
     
@@ -53,7 +54,7 @@ void pkt_del(pkt_t *pkt)
 		}
         free(pkt);
         pkt=NULL;
-    	}
+    }
 }
 
 
@@ -127,23 +128,29 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
     uint8_t tr = (*data<<2)>>7;
 	pkt_set_tr(pkt,tr);
 
+	if( type == PTYPE_DATA && tr!=0)
+	{
+		return E_TR;
+	}
+
 	// 3. window?
 	uint8_t window = (*data<<3)>>3;
 	pkt_set_window(pkt,window);
-
+    
+	ptr = ptr +1; // on deplace le pointeur de lecture sur le deuxieme byte de data
+	
 	// 4. length?
-    ptr = ptr +1; // on deplace le pointeur de lecture sur le deuxieme byte de data
 	uint8_t varLength [2]; //varuint16 representant length
-	memcpy(varLength,data+ptr, sizeof(uint16_t));
+	memcpy(varLength,data+ptr, 2);
 	uint16_t leng;
-	size_t l = varuint_decode(varLength, 2,&leng); 
-	//ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval); // l = nbre de byte(s)
+	int l = (int) varuint_decode(varLength, 2,&leng); 
+	//ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval); // l = nbre de byte(s) que fait length
 	if(l == -1) //cas ou varuint_decode a plante
 	{
 		return E_LENGTH;
 	}
 	pkt_set_length(pkt,leng);
-	
+
 	ptr = ptr + l;
 	
 	// 5. seqnum? sur 1 octet
@@ -163,21 +170,22 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 	uint32_t crc1;
 	memcpy(&crc1,data+ptr,4);
     crc1 = ntohl(crc1);
-
-	pkt_status_code code = pkt_set_crc1(pkt,crc1);
-	if( code != PKT_OK)
-	{
-      return code;
-    }
+	pkt_set_crc1(pkt,crc1);
+    
 		// 7.1 check crc1? 
-	uint32_t crc1check = crc32(0,(const Bytef *) data, 8);
+	// Mettre a 0 TR
+	char copie[ptr];
+	memcpy(copie, data, ptr);
+	copie[0] = copie[0] & 0b11011111;
+	
+	uint32_t crc1check = crc32((uint32_t) 0,(const Bytef *) copie, ptr);
     if(crc1!=crc1check)
 	{
       return E_CRC;
     }
+
+	ptr = ptr + 4;	
 	
-	ptr = ptr + 4;
-    
     // 8. payload? 
 	if( pkt_get_type(pkt) == PTYPE_DATA && pkt_get_tr(pkt) == 0) // Si il s'agit bien d'un payload
 	{
@@ -199,7 +207,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 		  return codeCrc2;
 		}
 			// 9.1 check crc2? 
-		uint32_t crc2check = crc32(0,(const Bytef *) pkt_get_payload(pkt) ,leng);
+		uint32_t crc2check = crc32((uint32_t) 0,(const Bytef *) pkt_get_payload(pkt) ,leng);
 
 		if(crc2!=crc2check)
 		{
@@ -223,7 +231,27 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
  */
 pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 {
+	//Verifier si la taille de buf est suffisante
+	int tailleCrc2 = 0;
+	if(pkt_get_tr(pkt) == 0 && pkt_get_length(pkt) != 0) //si il y a un crc2
+	{
+		tailleCrc2 = 4;
+	}
+	
+	if((int) *len< (predict_header_length(pkt) + 4 + pkt_get_length(pkt) +  tailleCrc2)) //verifier espace suffisant dans le buf
+	{
+		return E_NOMEM;
+	}
+
+	//a ignorer
+	if(pkt_get_type(pkt)==PTYPE_DATA && pkt_get_tr(pkt)!=0)
+	{
+		return E_TR;
+	}
+	
 	*len = 0;
+    
+	//1. type?
     uint8_t type = pkt_get_type(pkt);
 	if (type == PTYPE_DATA)
     {
@@ -241,15 +269,18 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
     {
         return E_TYPE;
     }
-	
+	//2. tr?
 	uint8_t tr = pkt_get_tr(pkt);
+	
+	//3. type?
+
 	uint8_t window = pkt_get_window(pkt);
 	uint8_t premierbyte = (type | tr | window);
 	memcpy(buf, &premierbyte,1);
     
 	*len = *len +1;
 
-	// length?
+	//4. length?
 	uint8_t varLength [2]; //varuint16 representant length
 	size_t l = varuint_encode(pkt_get_length(pkt),(uint8_t*) varLength,2); 
 	//ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
@@ -269,28 +300,28 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 
 	}
 	
-	// seqnum?
+	//5. seqnum?
 	uint8_t seqnum = pkt_get_seqnum(pkt);
     memcpy(buf + (*len), &seqnum, 1);
 	
     *len = *len +1;
 	
-	//timestamp?
+	//6. timestamp?
 	uint32_t timestamp = pkt_get_timestamp(pkt);
     memcpy(buf + (*len), &timestamp, 4);
     
 	*len = *len + 4;
 
-	//crc1?
- 	uint32_t crc1=crc32(0,(const Bytef *) buf, *len);
-    crc1=htonl(crc1);
-    memcpy(buf + (*len), &crc1,4);
-	/* 
-	-
-	- Code a ajouter ici ?
-	-
-	-
-	*/
+	//7. crc1?
+	// Mettre a 0 TR
+	char copie[predict_header_length(pkt)];
+	memcpy(copie, buf, *len);
+	copie[0] = copie[0] & 0b11011111;
+	
+	
+ 	uint32_t crc1=crc32(0,(const Bytef *) copie, *len);
+    	crc1=htonl(crc1);
+    	memcpy(buf + (*len), &crc1,4);
 	
 	*len = *len +4;
 
@@ -305,7 +336,7 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 	*len = *len + pkt_get_length(pkt);
 
 	//crc2?
-	if(pkt_get_type(pkt) == PTYPE_DATA && pkt_get_tr(pkt) == 0)
+	if(pkt_get_tr(pkt) == 0 && pkt_get_payload(pkt) != NULL) // si il y a un payload
 	{
 		uint32_t crc2=crc32(0,(const Bytef *) (buf + *(len) - pkt_get_length(pkt)), pkt_get_length(pkt));
 		crc2=htonl(crc2);
@@ -412,16 +443,14 @@ pkt_status_code pkt_set_window(pkt_t *pkt, const uint8_t window)
 		fprintf(stderr,"Le pointeur pkt est NULL \n");
 		return E_WINDOW;
 	}
-	else if(window >=0 && window<=31 )
+	if(window >31 )
 	{
 		fprintf(stderr,"La fenetre n'est pas comprise entre 0 et 31 alors qu'elle est encodee sur 5 bits \n");
 		return E_WINDOW;
 	}
-	else 
-	{
-		pkt->window=window;
-		return PKT_OK;
-	}
+	
+	pkt->window=window;
+	return PKT_OK;
 }
 
 pkt_status_code pkt_set_seqnum(pkt_t *pkt, const uint8_t seqnum)
@@ -432,11 +461,12 @@ pkt_status_code pkt_set_seqnum(pkt_t *pkt, const uint8_t seqnum)
 
 pkt_status_code pkt_set_length(pkt_t *pkt, const uint16_t length)
 {
-    if((length & 0b0111111111111111)>MAX_PAYLOAD_SIZE)
+	if((length & 0b0111111111111111)>MAX_PAYLOAD_SIZE)
 	{
 		return E_LENGTH;
 	}
 	pkt->length = length & 0b0111111111111111;
+	return PKT_OK;
 	
 }
 
@@ -503,7 +533,7 @@ pkt_status_code pkt_set_crc2(pkt_t *pkt, const uint32_t crc2)
  */
 ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 {
-	size_t nbBytes = varuint_predict_len(data);
+	size_t nbBytes = (int) varuint_len(data);
 	if(len < nbBytes)
 	{
 		fprintf(stderr,"La taille du buffer est insuffisante \n");
@@ -517,13 +547,13 @@ ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 	else if(nbBytes == 2)
 	{
 		uint16_t* tmp = (uint16_t*) data;
-		tmp = ntohs(*tmp); //Convert in network to host byte order
+		*tmp = ntohs(*tmp); //Convert in network to host byte order
 		*retval = 0b0111111111111111 & *tmp; // Mettre le premier bit a O
 		return nbBytes;
 	}
 	else
 	{
-		fprintf(stderr,"Le nombre de byte est incoherent: %d \n",nbBytes);
+		fprintf(stderr,"Le nombre de byte est incoherent \n");
 		return -1;
 	}
 }
@@ -625,12 +655,11 @@ ssize_t predict_header_length(const pkt_t *pkt)
 	if(pkt == NULL) // Programmation defensive
 	{
 		fprintf(stderr, "Le pointeur pkt est NULL \n");
+		return -1;
 	}
 	ssize_t nbByteLength = varuint_predict_len(pkt->length);
 	return 6 + nbByteLength;
 }
-
-
 
 
 
@@ -659,5 +688,45 @@ char getBit(const char c, int index)
 {
     char buffer = c;
     return ((buffer>>index) & 1);
+}
+
+
+
+int main()
+{
+
+	pkt_t* pkt = pkt_new();
+	pkt_set_type(pkt, PTYPE_DATA);
+	pkt_set_tr(pkt,0);
+	pkt_set_window(pkt,1);
+
+//1. type?
+    uint8_t type = pkt_get_type(pkt);
+	if (type == PTYPE_DATA)
+    {
+        type = 1;
+    }
+    else if (type == PTYPE_ACK)
+    {
+        type = 2;
+    }
+    else if (type == PTYPE_NACK)
+    {
+        type = 3;
+    }
+    else
+    {
+        return E_TYPE;
+    }
+	//2. tr?
+	uint8_t tr = pkt_get_tr(pkt);
+	
+	//3. type?
+
+	uint8_t window = pkt_get_window(pkt);
+	uint8_t premierbyte = (type | tr | window);
+
+	affichebin(premierbyte);
+	
 }
 
