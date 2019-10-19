@@ -2,6 +2,7 @@
 #include <stdlib.h> // pour calloc, malloc, free
 #include <string.h>
 #include "packet_interface.h"
+#include "LinkedList.h"
 
 typedef struct node{
 	pkt_t* pkt;
@@ -21,7 +22,7 @@ int createList()
 	return 0;
 }
 
-node* nouveauNode(pkt_t pkt, int indice)
+node* nouveauNode(pkt_t* pkt, int indice)
 {
 	node* newNode = (node*) malloc(sizeof(node));
 	if(newNode==NULL)
@@ -33,7 +34,7 @@ node* nouveauNode(pkt_t pkt, int indice)
 	return newNode;
 }
 
-int insert(pkt_t newpkt, int newIndice)
+int insert(pkt_t* newpkt, int newIndice)
 {
 	
 	if(head==NULL)
@@ -105,12 +106,11 @@ int main()
 	}
 
 	
-	insert(2);
-	insert(5);
-	insert(0);
-	insert(3);
-	insert(1);
-	insert(1);
+	insert(NULL, 2);
+	insert(NULL, 5);
+	insert(NULL, 0);
+	insert(NULL, 3);
+	insert(NULL, 1);
 	
 	node* ptr = *head;
 	while(ptr!=NULL)

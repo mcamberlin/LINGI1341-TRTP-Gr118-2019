@@ -107,28 +107,36 @@ The process crashed! (There is still data to send on stdin, but the program stop
  * @return: a file descriptor number representing the socket,
  *         or -1 in case of error (explanation will be printed on stderr)
  */
+#include <stdio.h> // pour fread() et fwrite()
+#include <sys/types.h> // pour recvfrom(), pour connect() et les 3 prochains includes pour getaddrinfo()
+#include <sys/socket.h>
+#include <netdb.h>
+#include <string.h>  // Pour memset()
+#include <poll.h> // pour pollfd
+#include <unistd.h> // pour read() et pour close()
+#include <errno.h>
 int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
 {
 
 	// 0. Verifier les arguments
 	if(source_addr == NULL)
 	{ 
-		fprintf(stderr, "source_addr est NULL \n");
+		//fprintf(stderr, "source_addr est NULL \n");
 		return -1;
 	}
 	if(src_port <= 0)
 	{
-		fprintf(stderr, "src_port est zero ou negatif \n");
+		//fprintf(stderr, "src_port est zero ou negatif \n");
 		return -1;
 	}
 	if(dest_addr == NULL)
 	{
-		fprintf(stderr, "dest_addr est NULL \n");
+		//fprintf(stderr, "dest_addr est NULL \n");
 		return -1;
 	}
 	if(dst_port <= 0)
 	{
-		fprintf(stderr, "dst_port est zero ou negatif \n");
+		//fprintf(stderr, "dst_port est zero ou negatif \n");
 		return -1;
 	}
     
@@ -144,12 +152,12 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
 	
 	// 1. Create a IPv6 socket supporting datagrams
 
-	int fd_src = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP); 
+	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP); 
 	//int socket(int domain, int type, int protocol); 
 	// AF_INET6 pour l'adresse en IPv6 et SOCK_DGRAM pour UDP et 0 pour protocole par default. 
-	if (fd_src == -1) 
+	if (fd == -1) 
 	{  
-		fprintf(stderr, "socket: %s , errno %d\n", strerror(fd_src), fd_src);
+		//fprintf(stderr, "socket: %s , errno %d\n", strerror(fd), fd);
 		return -1;
 	}
 
@@ -157,25 +165,26 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
 	dest_addr->sin6_port = htons(dst_port);
 
 	// 2. Lier le socket avec la source using the bind() system call
-	size_t len_addr = sizeof(struct  sockaddr_in6);                      
-	int lien = bind(fd_src,(struct sockaddr*) source_addr, len_addr);
+	socklen_t len_addr = sizeof(struct  sockaddr_in6);                      
+	int lien = bind(fd,(struct sockaddr*) source_addr, len_addr);
+    //int bind(int socket, const struct sockaddr *address, socklen_t address_len);
 	if(lien == -1)
 	{
-	    close(fd_src);
-	    fprintf(stderr,"Erreur dans bind() : %s\n", strerror(errno));
+	    close(fd);
+	    //fprintf(stderr,"Erreur dans bind() : %s\n", strerror(errno));
 	    return -1;
 	}   
 	
 	// 3.Connect the socket to the address of the destination using the connect() system call
-	int connect_src = connect(fd_src,(struct sockaddr*) dest_addr, len_addr);
+	int connect_src = connect(fd,(struct sockaddr*) dest_addr, len_addr);
 	if(connect_src == -1)
 	{
-	    close(fd_src);
-	    fprintf(stderr,"Erreur dans connect() \n");
+	    close(fd);
+	    //fprintf(stderr,"Erreur dans connect() \n");
 	    return -1;
 	}
 
-	return fd_src;    
+	return fd;    
 }
 
 
@@ -202,7 +211,14 @@ void read_write_loop(int sfd)
 	{
 		struct pollfd pfd;
 		pfd.fd = sfd; 
-		pfd.events = POLLIN; // Data other than high-priority data may be read without blocking.
+		pfd.events = POLLIN | POLLOUT; // Data other than high-priority data may be read without blocking.
+        /*
+        struct pollfd {
+               int   fd;          file descriptor
+               short events;      requested events
+               short revents;     returned events 
+           };
+    	*/
 
 		struct pollfd filedescriptors[1];
 		filedescriptors[0] = pfd;
@@ -214,27 +230,44 @@ void read_write_loop(int sfd)
 		// int poll(struct pollfd fds[], nfds_t nfds, int timeout);
 		if(p == -1)
 		{
-			fprintf(stderr, "An error occur: %s \n", strerror(errno));
+			//fprintf(stderr, "An error occur: %s \n", strerror(errno));
 			return;
 		}
 
-		if(pfd.revents & POLLIN) // Si un événement est détecté via poll
+		if(pfd.revents == POLLIN) // There is data to read
 		{
-			// 1. Remettre les buffers à 0 avant d'écrire dedans:	
+			//3. Lire le socket
+            memset(buffer_socket,0,MAXSIZE);
+			ssize_t r_socket = read(sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
+			if(r_socket == -1 || r_socket > MAXSIZE)
+			{
+				//fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
+				return;
+			}
+			if(r_socket == 0)
+			{
+				//fprintf(stderr, "Fin de la lecture du socket atteinte \n");
+				return;
+			}
+			// 4. Afficher sur la sortie standard ce qui a été lu sur le socket
+			fprintf(stdout,"%s",buffer_socket);	
+		}
+        if(pfd.revents == POLLOUT) // Writing is now possible
+        {
+			// 1. Remettre les buffers à 0 avant d'écrire dedans:
 			memset(buffer_stdin,0,MAXSIZE);
-
 			// 2. Lire le contenu de l'entrée standard	
 			int r_stdin = read(0, buffer_stdin, MAXSIZE); 
 			//ssize_t read(int fd, void *buf, size_t count)
 			// le fd = 0 correspond à stdin
 			if(r_stdin == -1 || r_stdin > MAXSIZE)
 			{
-				fprintf(stderr, "Erreur lecture entrée standard : %s \n",strerror(errno));
+				//fprintf(stderr, "Erreur lecture entrée standard : %s \n",strerror(errno));
 				return;
 			}
 			if(r_stdin == 0)
 			{
-				fprintf(stderr, "Fin de la lecture de l'entrée standard \n");
+				//fprintf(stderr, "Fin de la lecture de l'entrée standard \n");
 				return;
 			}
 
@@ -242,26 +275,10 @@ void read_write_loop(int sfd)
 			int w_socket = write(sfd, buffer_stdin, MAXSIZE); //ssize_t write(int fd, const void *buf, size_t count);  	
 			if(w_socket == -1)
 			{
-				fprintf(stderr,"An error occured while writing on the socket \n");
+				//fprintf(stderr,"An error occured while writing on the socket \n");
 				return;
 			}
-		
-			//3. Lire le socket
-			ssize_t r_socket = read(sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
-			if(r_socket == -1 || r_socket > MAXSIZE)
-			{
-				fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
-				return;
-			}
-			if(r_socket == 0)
-			{
-				fprintf(stderr, "Fin de la lecture du socket atteinte \n");
-				return;
-			}
-			// 4. Afficher sur la sortie standard ce qui a été lu sur le socket
-			fprintf(stdout,"%s",buffer_socket);	
-		}
-	}
+        }
 }
  
 /* Lorsque un client veut parler à un serveur, il spécifie l'adresse et port du serveur, et choisit un port aléatoire pour lui. Le serveur par contre ne connait pas à priori l'adresse du client qui se connectera.
