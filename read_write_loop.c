@@ -20,11 +20,14 @@
 #include <poll.h> // pour pollfd
 #include <unistd.h> // pour read() et pour close()
 #include <errno.h>
-pkt_status_code read_write_loop(int sfd)
+void read_write_loop(int sfd)
 {
 	const int MAXSIZE = 1024;
-	char buffer_socket[MAXSIZE];
-	char buffer_stdin[MAXSIZE];
+	char buffer_out[MAXSIZE];
+	char buffer_in[MAXSIZE];
+	uint8_t tailleWindow = 1; // taille par défaut de la fenetre du sender
+	int windowMin =0;
+	int windowMax = 1;
 	
 	// Boucle pour lire un socket et imprimer sur stdout, tout en lisant stdin et en écrivant sur le socket
 	while(1)
@@ -51,7 +54,7 @@ pkt_status_code read_write_loop(int sfd)
 		{
 			//1. Lire le socket
             memset(buffer_socket,0,MAXSIZE);
-			ssize_t r_socket = read(sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
+			ssize_t r_socket = read(sfd, buffer_out, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
 			if(r_socket == -1 || r_socket > MAXSIZE)
 			{
 				//fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
@@ -65,7 +68,31 @@ pkt_status_code read_write_loop(int sfd)
 			// 2. TRANSFORMER le buffer en un paquet avec decode
 			pkt_t* pkt_recu = pkt_new();
 			
-			pkt_status_code = pkt_decode();
+			pkt_status_code code = pkt_decode((char*) buffer_in, r_socket, pkt_recu );
+
+			if(code != PKT_OK) // Si le paquet n'est pas conforme
+			{
+				if(code == E_TYPE) // Erreur liée au champ Type
+				{
+					fprintf(stderr,"Type de paquet inconnu \n", code);
+				}
+				
+			}
+
+			// 3. Reagir differemment selon le type recu
+			if(code == PKT_OK)
+			{
+				//3.1 PTYPE == DATA
+				if(pkt_get_type(pkt_recu) == PTYPE_DATA)
+				{
+					windowSender = pkt_get_window(pkt_recu);
+					
+					uint8_t  seqnum = pkt_get_seqnum(pkt_recu);
+					if(seqnum <) // Ignorer les paquets en dehors de l'intervalle considéré
+}
+				}
+
+			}
 			
 
 
