@@ -32,7 +32,6 @@ pkt_t* pkt_new()
     pkt_t* p = (pkt_t*) calloc(1,sizeof(pkt_t)); //initialise à zero
     if(p==NULL)
     {
-        fprintf(stderr,"allocation du nouveau paquet a echoue. \n");
         return NULL;
     }
     
@@ -103,7 +102,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 	
 
     int ptr=0; //pointeur servant à parcourir data byte par byte
-    
+   /* 
     // 1. type?
 	uint8_t type = (uint8_t) (*data)>>6;
     if(type == 1)
@@ -136,6 +135,18 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 	// 3. window?
 	uint8_t window = (*data<<3)>>3;
 	pkt_set_window(pkt,window);
+    */
+    memcpy(pkt, data, 1);
+    
+    if(pkt_get_type(pkt)==0)
+    {
+        return E_TYPE;
+    }
+    
+    if(pkt_get_type(pkt)==PTYPE_DATA && pkt_get_tr(pkt)!=0)
+    {
+        return E_TR;
+    }
     
 	ptr = ptr +1; // on deplace le pointeur de lecture sur le deuxieme byte de data
 	
@@ -143,7 +154,7 @@ pkt_status_code pkt_decode(const char *data, const size_t len, pkt_t *pkt)
 	uint8_t varLength [2]; //varuint16 representant length
 	memcpy(varLength,data+ptr, 2);
 	uint16_t leng;
-	int l = (int) varuint_decode(varLength, 2,&leng); 
+	int l = (int) varuint_decode(varLength, 2, &leng); 
 	//ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval); // l = nbre de byte(s) que fait length
 	if(l == -1) //cas ou varuint_decode a plante
 	{
@@ -244,7 +255,7 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 	}
 
 	//a ignorer
-	if(pkt_get_type(pkt)==PTYPE_DATA && pkt_get_tr(pkt)!=0)
+	if(pkt_get_type(pkt)!=PTYPE_DATA && pkt_get_tr(pkt)!=0)
 	{
 		return E_TR;
 	}
@@ -268,7 +279,7 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 	{
 		return E_TYPE;
 	}
-    //encode le premier byte (=type, tr , window)
+    //1. 2. 3. encode le premier byte (=type, tr , window)
 	memcpy(buf, pkt, 1);
 
 
@@ -276,22 +287,24 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 
 	//4. length?
 	uint8_t varLength [2]; //varuint16 representant length
-	size_t l = varuint_encode(pkt_get_length(pkt),(uint8_t*) varLength,2); 
+	ssize_t predictLen = varuint_predict_len(pkt_get_length(pkt));
+	ssize_t l = varuint_encode(pkt_get_length(pkt),(uint8_t*) varLength, predictLen);  
 	//ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
-
+	if(l==-1)
+    {
+        return E_LENGTH;
+    }
 	if(l == 1) //cas ou la longueur est sur 1 byte
 	{
 		memcpy(buf + (*len), varLength,1);
 		
 		*len = *len +1;
-
 	}
-	else if(l ==2) //cas ou la longueur est sur 2 bytes
+	if(l ==2) //cas ou la longueur est sur 2 bytes
 	{
 		memcpy(buf + (*len), varLength,2);
 		
 		*len = *len +2;
-
 	}
 	
 	//5. seqnum?
@@ -308,18 +321,18 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 
 	//7. crc1?
 	// Mettre a 0 TR
-	char copie[predict_header_length(pkt)];
+	char copie[*len];
 	memcpy(copie, buf, *len);
 	copie[0] = copie[0] & 0b11011111;
 	
 	
- 	uint32_t crc1=crc32(0,(const Bytef *) copie, *len);
-    	crc1=htonl(crc1);
-    	memcpy(buf + (*len), &crc1,4);
+ 	uint32_t crc1=crc32(0,(const Bytef *) &copie, *len);
+    crc1=htonl(crc1);
+    memcpy(buf + (*len), &crc1,4);
 	
 	*len = *len +4;
 
-	//payload?
+	//8. payload?
     if(pkt_get_payload(pkt)==NULL) // si il n'y a pas de payload
 	{
       return PKT_OK;
@@ -434,12 +447,10 @@ pkt_status_code pkt_set_window(pkt_t *pkt, const uint8_t window)
 {
 	if(pkt == NULL)
 	{
-		fprintf(stderr,"Le pointeur pkt est NULL \n");
 		return E_WINDOW;
 	}
 	if(window >31 )
 	{
-		fprintf(stderr,"La fenetre n'est pas comprise entre 0 et 31 alors qu'elle est encodee sur 5 bits \n");
 		return E_WINDOW;
 	}
 	
@@ -455,7 +466,7 @@ pkt_status_code pkt_set_seqnum(pkt_t *pkt, const uint8_t seqnum)
 
 pkt_status_code pkt_set_length(pkt_t *pkt, const uint16_t length)
 {
-	if((length & 0b0111111111111111)>MAX_PAYLOAD_SIZE)
+	if((length)>MAX_PAYLOAD_SIZE)
 	{
 		return E_LENGTH;
 	}
@@ -502,6 +513,7 @@ pkt_status_code pkt_set_payload(pkt_t *pkt, const char *data, const uint16_t len
 		return E_NOMEM;
 	}
 	memcpy(pkt->payload, data, length);
+    pkt->length = length;
 	return PKT_OK;   
 }
 
@@ -527,10 +539,9 @@ pkt_status_code pkt_set_crc2(pkt_t *pkt, const uint32_t crc2)
  */
 ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 {
-	size_t nbBytes = (int) varuint_len(data);
+	size_t nbBytes = (size_t) varuint_len(data);
 	if(len < nbBytes)
 	{
-		fprintf(stderr,"La taille du buffer est insuffisante \n");
 		return -1;
 	}
 	else if(nbBytes == 1)
@@ -547,7 +558,6 @@ ssize_t varuint_decode(const uint8_t *data, const size_t len, uint16_t *retval)
 	}
 	else
 	{
-		fprintf(stderr,"Le nombre de byte est incoherent \n");
 		return -1;
 	}
 }
@@ -566,33 +576,21 @@ ssize_t varuint_encode(uint16_t val, uint8_t *data, const size_t len)
 {
 	if(val >= 0x8000) // Programmation defensive
 	{
-		fprintf(stderr,"val est superieur a 0X8000 \n");
-		return -1;
-	}
-	uint8_t nbBytes = varuint_predict_len(val);
-	if(nbBytes<len)
-	{
-		fprintf(stderr,"La taille du buffer est insuffisante \n");
 		return -1;
 	}
 	
-	if(nbBytes == 1)
+	if(len == 1)
 	{
-		memcpy(data, &val,1);
-		return nbBytes;
+		memcpy(data, &val,len);
+		return len;
 	}
-	else if( nbBytes == 2)
+	else if(len == 2)
 	{
-		uint16_t tmp = val + 0x8000; // mettre le premier bit à 1
-		tmp = htons(tmp);
-		memcpy(data,&tmp,nbBytes); // Convert in network byte-order
-		return nbBytes;
+		uint16_t tmp = htons(0b1000000000000000 | val);
+		memcpy(data,&tmp,len); // Convert in network byte-order
+		return len;
 	}
-	else
-	{
-		fprintf(stderr,"Le nombre de byte est incoherent: %d \n",nbBytes);
-		return -1;
-	}
+	return len;
 }
 
 /*
@@ -603,11 +601,10 @@ size_t varuint_len(const uint8_t *data)
 {
 	if(data == NULL)
 	{
-		fprintf(stderr,"Le pointeur data est NULL \n");
 		return -1;
 	}
 
-	if(*(data)>>7)
+	if(*(data)>>7 == 1)
 	{
 		return 2;
 	}
@@ -624,10 +621,9 @@ ssize_t varuint_predict_len(uint16_t val)
 {
 	if(val>=0x8000) // Programmation defensive
 	{
-		fprintf(stderr,"Val est superieur ou egal a Ox8000\n");
 		return -1;
 	}
-	if(val>=128)
+	if(val>=0x0080)
 	{
 		return 2;
 	}
@@ -648,46 +644,29 @@ ssize_t predict_header_length(const pkt_t *pkt)
 {
 	if(pkt == NULL) // Programmation defensive
 	{
-		fprintf(stderr, "Le pointeur pkt est NULL \n");
 		return -1;
 	}
 	ssize_t nbByteLength = varuint_predict_len(pkt->length);
 	return 6 + nbByteLength;
 }
 
-
-
-
-/* -------------------------------- FONCTION INUTILE ? ----------------------------------------- */
-/* return la valeur reelle du champ length c-a-d sans le premier bit l
-*/
-uint16_t realvalue(uint16_t pkt_length)
-{
-	return pkt_length & 0b0111111111111111;
-}
-void affichebin(char a)
-{
-    int i = 0;
- 
-    for(i = 7 ; i >=0 ; i--)
-    {
-        int res = a>>i & 1;
-		printf("%d", res);
-    }
-	printf("\n");
-}
-/* @return 1 si le ième bit =1
-          0 si le ième bit = 0 */
-char getBit(const char c, int index)
-{
-    char buffer = c;
-    return ((buffer>>index) & 1);
-}
-
-
-
 int main()
 {
+
+	uint16_t i = 512;
+	uint8_t* ibis = (uint8_t*) &i;
+	printf("pointeur 16bits = %p\npointeur 8 bits = %p\n", &i, ibis);
+	affichebin(*(ibis+1));
+	affichebin(*(ibis));
+	const size_t prediction = varuint_predict_len(i);
+	uint8_t* data = (uint8_t*)malloc(prediction);
+	size_t m = varuint_encode(i, data, prediction);
+	printf("m=%ld\n", m);
+	ssize_t p = varuint_predict_len(i);
+	printf("varuint_predict_len = %ld\n", p);
+	affichebin(*(data+1));
+	affichebin(*(data));
+
 
 	pkt_t* pkt = pkt_new();
 	pkt_set_type(pkt, PTYPE_DATA);
@@ -722,7 +701,6 @@ int main()
 	uint8_t premierbyte=0;
 	memcpy(&premierbyte, pkt, 1);
 
-	affichebin(premierbyte);
 	
 }
 
