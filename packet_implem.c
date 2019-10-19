@@ -250,34 +250,28 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 	}
 	
 	*len = 0;
-    
-	//1. type?
-    uint8_t type = pkt_get_type(pkt);
-	if (type == PTYPE_DATA)
-    {
-        type = 1;
-    }
-    else if (type == PTYPE_ACK)
-    {
-        type = 2;
-    }
-    else if (type == PTYPE_NACK)
-    {
-        type = 3;
-    }
-    else
-    {
-        return E_TYPE;
-    }
-	//2. tr?
-	uint8_t tr = pkt_get_tr(pkt);
-	
-	//3. type?
 
-	uint8_t window = pkt_get_window(pkt);
-	uint8_t premierbyte = (type | tr | window);
-	memcpy(buf, &premierbyte,1);
-    
+	uint8_t type = pkt_get_type(pkt);
+	if (type == PTYPE_DATA)
+	{
+		type = 1;
+	}
+	else if (type == PTYPE_ACK)
+	{
+		type = 2;
+	}
+	else if (type == PTYPE_NACK)
+	{
+		type = 3;
+	}
+	else
+	{
+		return E_TYPE;
+	}
+    //encode le premier byte (=type, tr , window)
+	memcpy(buf, pkt, 1);
+
+
 	*len = *len +1;
 
 	//4. length?
@@ -698,7 +692,8 @@ int main()
 	pkt_t* pkt = pkt_new();
 	pkt_set_type(pkt, PTYPE_DATA);
 	pkt_set_tr(pkt,0);
-	pkt_set_window(pkt,1);
+	pkt_set_window(pkt,8);
+	pkt_set_length(pkt, 2);
 
 //1. type?
     uint8_t type = pkt_get_type(pkt);
@@ -719,12 +714,13 @@ int main()
         return E_TYPE;
     }
 	//2. tr?
-	uint8_t tr = pkt_get_tr(pkt);
+	//uint8_t tr = pkt_get_tr(pkt);
 	
 	//3. type?
 
-	uint8_t window = pkt_get_window(pkt);
-	uint8_t premierbyte = (type | tr | window);
+	//uint8_t window = pkt_get_window(pkt);
+	uint8_t premierbyte=0;
+	memcpy(&premierbyte, pkt, 1);
 
 	affichebin(premierbyte);
 	
