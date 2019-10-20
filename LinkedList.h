@@ -9,11 +9,19 @@
 
 typedef struct node node_t;
 
-int createList();
+node_t** createList();
 
 node_t newNode(int indice);
 
-int insert(pkt_t* newpkt, int newIndice);
+int insert(node_t** head, pkt_t* newpkt, int newIndice);
+
+
+/**
+* return le pkt contenu dans le noeud et retire le noeud de la chaine
+*/
+pkt_t* isInList(node_t** head, int indice);
+
+void printList(node_t** head);
 
 
 #endif
