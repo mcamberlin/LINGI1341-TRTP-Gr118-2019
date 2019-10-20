@@ -1,70 +1,103 @@
-#include "packet_interface.h"
-#include <stdio.h> 
-#include <stdlib.h> // pour calloc, malloc, free
-#include <string.h>
-#include <arpa/inet.h>
-#include <stddef.h>
-#include <stdint.h>
+#include "socket.h" 
+#include "packet_implem.h"
+
+#include <stdio.h> // pour fprintf()
+#include <sys/types.h> // pour connect() 
+#include <sys/socket.h> // pour getaddrinfo()
+#include <netdb.h> // pour getaddrinfo()
+#include <string.h>  // Pour memset()
+#include <poll.h> // pour pollfd
+#include <unistd.h> // pour read(), write() et close()
+#include <errno.h> // pour le detail des erreurs
 
 
 /**
- * @pre - Buffer = pointeur vers un buffer representant le 
- *
- *
+  *return true si c'est dans l'intervalle de la fenetre et false sinon
+  *
+  *
 */
-#include <stdio.h> // pour fread() et fwrite()
-#include <sys/types.h> // pour recvfrom(), pour connect() et les 3 prochains includes pour getaddrinfo()
-#include <sys/socket.h>
-#include <netdb.h>
-#include <string.h>  // Pour memset()
-#include <poll.h> // pour pollfd
-#include <unistd.h> // pour read() et pour close()
-#include <errno.h>
+int isInWindow(int seqnum, int windowMin, int windowMax)
+{
+	if(windowMin<windowMax)//cas ou la borne superieur n'est pas encore revenue a zero
+	{
+		if(windowMin<=seqnum && windowMax>=seqnum)
+		{
+			return 1;
+		}
+	}
+	else //cas ou la borne max est redescendu a zero
+	{
+		if((windowMin<=seqnum && seqnum<=255) || (0<=seqnum && seqnum<=windowMax))
+		{
+			return 1;
+		}
+	}
+	return 0;
+}
+
+
+/**
+  *augmente la borne de la window tout en la remettant a zero si elle depasse la limite 
+  *de 255
+  *
+*/
+void augmenteBorne(int* borne)
+{
+	if(*borne==255)
+	{
+		*borne = 0;
+		return;
+	}
+	(*borne)++;
+}
+
+
+
+uint8_t tailleWindow = 1; // taille par défaut de la fenetre du sender
+int windowMin =0;
+int windowMax = 0;
+node_t** head;
+
+/** La fonction read_write_loop() permet de lire le contenu du socket et l'ecrire dans un fichier, tout en permettant de renvoyer des accuses sur ce meme socket.
+ * Si A et B tapent en même temps, la lecture et l'écriture est traitée simultanément à l'aide de l'appel système: poll()
+ * Loop reading a socket and writing into a file,
+ * while writing to the socket
+ * @sfd: The socket file descriptor. It is both bound and connected.
+ * @return: dès qu'un paquet DATA avec le champ length à 0 et dont le numéro de séquence correspond au dernier numéro d'acquittement envoyé par le destinataire.
+ */
 void read_write_loop(int sfd)
 {
-	const int MAXSIZE = 1024;
-	char buffer_out[MAXSIZE];
-	char buffer_in[MAXSIZE];
-	uint8_t tailleWindow = 1; // taille par défaut de la fenetre du sender
-	int windowMin =0;
-	int windowMax = 1;
-	
-	// Boucle pour lire un socket et imprimer sur stdout, tout en lisant stdin et en écrivant sur le socket
+	const int MAXSIZE = MAX_PAYLOAD_SIZE + 12 + 4; //   EN-TETE + CRC1 + payload + CRC2 
+	char buffer_socket[MAXSIZE]; //buffer de la lecture du socket 
+
 	while(1)
 	{
-		struct pollfd pfd;
-		pfd.fd = sfd; 
-		pfd.events = POLLIN | POLLOUT; // Data other than high-priority data may be read without blocking.
-
-		struct pollfd filedescriptors[1];
-		filedescriptors[0] = pfd;
-
 		nfds_t nfds = 1;
+		struct pollfd filedescriptors[(int) nfds];
+		filedescriptors[0].fd = sfd;         // Surveiller le socket
+		filedescriptors[0].events = POLLIN; // When there is data to read on socket
+		
 		int timeout = -1; //poll() shall wait for an event to occur 
 		
 		int p = poll(filedescriptors,nfds, timeout); 
 		// int poll(struct pollfd fds[], nfds_t nfds, int timeout);
 		if(p == -1)
 		{
-			//fprintf(stderr, "An error occur: %s \n", strerror(errno));
+			fprintf(stderr, "Erreur dans poll read_write_loop(): %s \n", strerror(errno));
 			return;
 		}
 
-		if(pfd.revents == POLLIN) // There is data to read
+		if(filedescriptors[0].revents & POLLIN) // There is data to read on the socket
 		{
 			//1. Lire le socket
-            memset(buffer_socket,0,MAXSIZE);
-			ssize_t r_socket = read(sfd, buffer_out, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
-			if(r_socket == -1 || r_socket > MAXSIZE)
+            		memset(buffer_socket,0,MAXSIZE); // Remettre le buffer à 0 avant d'écrire dedans
+			ssize_t r_socket = read(sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
+			if(r_socket == -1)
 			{
-				//fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
+				fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
 				return;
 			}
-			if(r_socket == 0)
-			{
-				//fprintf(stderr, "Fin de la lecture du socket atteinte \n");
-				return;
-			}
+			
 			// 2. TRANSFORMER le buffer en un paquet avec decode
 			pkt_t* pkt_recu = pkt_new();
 			
@@ -74,60 +107,135 @@ void read_write_loop(int sfd)
 			{
 				if(code == E_TYPE) // Erreur liée au champ Type
 				{
-					fprintf(stderr,"Type de paquet inconnu \n", code);
+					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Type */, code = %d \n", code);
+				}
+				if(code == E_TR)
+				{
+					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champ TR */, code = %d \n", code);
+				}
+				if(code == E_LENGTH)
+				{
+					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Length  */, code = %d \n", code);
+
+				}
+				if(code == E_CRC)
+				{
+					fprintf(stderr,"Erreur DECODE : /* CRC invalide */, code = %d \n", code);
+				}
+				if(code == E_WINDOW)
+				{
+					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Window */, code = %d \n", code);
+				}
+				if(code == E_SEQNUM)
+				{
+					fprintf(stderr,"Erreur DECODE : /* Numero de sequence invalide */, code = %d \n", code);
+				}
+				if(code == E_NOMEM)
+				{
+					fprintf(stderr,"Erreur DECODE : /* Pas assez de memoire */, code = %d \n", code);
+				}
+				if(code == E_NOHEADER)
+				{
+					fprintf(stderr, "Erreur DECODE : /* Le paquet n'a pas de header (trop court) */, code = %d \n", code);    			
+				}
+				if(code == E_UNCONSISTENT)
+				{
+					fprintf(stderr, "Erreur DECODE : /* Le paquet est incoherent */, code = %d \n", code);    
 				}
 				
 			}
 
 			// 3. Reagir differemment selon le type recu
-			if(code == PKT_OK)
+			if(code == PKT_OK) //PKT_OK = 0,     
 			{
-				//3.1 PTYPE == DATA
-				if(pkt_get_type(pkt_recu) == PTYPE_DATA)
+				fprintf(stderr, "SUCCES DECODE : /* Le paquet a ete traite avec succes */ \n"); 
+
+				if(pkt_get_type(pkt_recu) == PTYPE_DATA) //permet d'ignorer les autres types
 				{
-					windowSender = pkt_get_window(pkt_recu);
-					
-					uint8_t  seqnum = pkt_get_seqnum(pkt_recu);
-					if(seqnum <) // Ignorer les paquets en dehors de l'intervalle considéré
-}
+					int windowSender = pkt_get_window(pkt_recu);
+					if(windowSender != tailleWindow) //Si la fenetre actuelle est differente de celle recue dans le pkt (fenetre dynamique)
+					{
+						tailleWindow = windowSender;
+						windowMax = windowMin + tailleWindow - 1; 
+						
+						
+						if(windowMax > 255) // il faut encore prendre le cas ou la fenetre recommence a zero
+						{
+							windowMax = windowMax-255;
+						}
+					}
+
+					//printList(head);
+
+					uint8_t seqnum = pkt_get_seqnum(pkt_recu);
+					if(isInWindow(seqnum, windowMin, windowMax)) //si seqnum est dans la fenetre courante de reception 
+					{
+						if(seqnum==windowMin) //si le numero de seq correspond a la limite min de la fenetre, on ecrit ce paquet et tout ceux qui suivent dans une liste chainee pour les trier par seqnum 
+						{
+							int fichier = open("fichierSortie.txt", O_CREAT | O_WRONLY | O_APPEND, S_IRWXU); //si le fichier n'existe pas, il le crée
+							if(fichier == -1) // cas où @fopen() a planté
+							{
+								fprintf(stderr, "Erreur dans l'ouverture du fichier \n");
+								return;
+							}
+							int w = write(fichier, pkt_get_payload(pkt_recu), pkt_get_length(pkt_recu));
+							if(w==-1)
+							{
+								fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
+							}
+
+							pkt_del(pkt_recu);
+							augmenteBorne(&windowMin);
+							augmenteBorne(&windowMax);
+							int seqnum_suivant = seqnum+1;
+
+							printf("avant isinlist\n");
+							pkt_t* pktSuivant = isInList(head, seqnum_suivant);
+							printf("apres isinlist\n");
+							if(pktSuivant == NULL)
+							{
+								printf("le numero suivant n'est pas dans la liste, %d\n", seqnum_suivant);
+							}
+							else
+							{
+								printf("début boucle while\n");
+								printList(head);
+								printf("message = %s\n", pkt_get_payload(pktSuivant));
+
+								while(pktSuivant != NULL)
+								{
+									w = write(fichier, pkt_get_payload(pktSuivant), pkt_get_length(pktSuivant));
+									if(w==-1)
+									{
+										fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
+									}
+									pkt_del(pktSuivant);
+									seqnum_suivant ++;
+									pktSuivant = isInList(head, seqnum_suivant);
+									if(pktSuivant!=NULL)
+									{
+										augmenteBorne(&windowMin);
+										augmenteBorne(&windowMax);
+									}
+								}
+							}
+							
+						}
+						else //le seqnum appartient a la fenetre mais plus grand que la borne inferieur -> on met dans la liste chainee
+						{
+							printf("met dans la liste chainee\n");
+							int err = insert(head, pkt_recu, pkt_get_seqnum(pkt_recu));
+							if(err == -1)
+							{
+								fprintf(stderr, "Erreur dans l'insertion dans la liste chainee  \n");
+							}
+							printList(head);
+						}
+
 				}
-
 			}
-			
-
-
-
-
-
-
-	
 		}
-		if(pfd.revents == POLLOUT) // Writing is now possible
-		{
-			// 1. Remettre les buffers à 0 avant d'écrire dedans:
-			memset(buffer_stdin,0,MAXSIZE);
-			// 2. Lire le contenu de l'entrée standard	
-			int r_stdin = read(0, buffer_stdin, MAXSIZE); 
-			//ssize_t read(int fd, void *buf, size_t count)
-			// le fd = 0 correspond à stdin
-			if(r_stdin == -1 || r_stdin > MAXSIZE)
-			{
-				//fprintf(stderr, "Erreur lecture entrée standard : %s \n",strerror(errno));
-				return;
-			}
-			if(r_stdin == 0)
-			{
-				//fprintf(stderr, "Fin de la lecture de l'entrée standard \n");
-				return;
-			}
-
-			// 2. L'écrire dans le socket
-			int w_socket = write(sfd, buffer_stdin, MAXSIZE); //ssize_t write(int fd, const void *buf, size_t count);  	
-			if(w_socket == -1)
-			{
-				//fprintf(stderr,"An error occured while writing on the socket \n");
-				return;
-			}
-        }
+	}
 }
+
 
