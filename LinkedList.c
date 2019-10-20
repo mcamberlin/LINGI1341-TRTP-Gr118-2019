@@ -10,16 +10,15 @@ typedef struct node{
 	struct node* next;
 }node;
 
-node** head;
 
-int createList()
+node** createList()
 {
-	head = (node**) malloc(sizeof(node*));
+	node** head = (node**) malloc(sizeof(node*));
 	if(head==NULL)
 	{
-		return -1;
+		return NULL;
 	}
-	return 0;
+	return head;
 }
 
 node* nouveauNode(pkt_t* pkt, int indice)
@@ -31,10 +30,11 @@ node* nouveauNode(pkt_t* pkt, int indice)
 	}
 	newNode->pkt = pkt;
 	newNode->indice = indice;
+	newNode->next=NULL;
 	return newNode;
 }
 
-int insert(pkt_t* newpkt, int newIndice)
+int insert(node** head, pkt_t* newpkt, int newIndice)
 {
 	
 	if(head==NULL)
@@ -43,7 +43,6 @@ int insert(pkt_t* newpkt, int newIndice)
 	}
 	
 	node* newNode = nouveauNode(newpkt, newIndice);
-	//node* newNode = nouveauNode(newIndice);
 	if(newNode==NULL)
 	{
 		return -1;
@@ -84,10 +83,17 @@ int insert(pkt_t* newpkt, int newIndice)
 	node* previous = *head; 
 	node* ptr = (*head)->next;
 
-	while(ptr->indice < newNode->indice)
+	while(ptr->next!=NULL && ptr->indice < newNode->indice)
 	{
 		ptr=ptr->next;
 		previous= previous->next;
+	}
+
+	if(ptr->next!=NULL)
+	{
+		ptr->next = newNode;
+		newNode->next = NULL;
+		return 0;
 	}
 
 	newNode->next = ptr;
@@ -97,6 +103,67 @@ int insert(pkt_t* newpkt, int newIndice)
 }
 
 
+pkt_t* isInList(node_t** head, int indice)
+{
+	if(head==NULL)
+	{
+		return NULL;
+	}
+	
+
+	if((*head)==NULL)//liste est vide
+	{
+		printf("liste vide \n");
+		return NULL;
+	}
+
+	if((*head)->indice == indice)
+	{
+		pkt_t* tmp = (*head)->pkt;
+		node* repere = *head;
+		*head=(*head)->next;
+		free(repere);
+		return tmp;
+	}
+	
+	node* previous = *head;
+	node* runner = (*head)->next;
+	while(runner!=NULL)
+	{
+		if(runner->indice == indice)
+		{
+			previous->next = runner->next;
+			pkt_t* tmp = runner->pkt;
+			free(runner);
+			return tmp;
+		}
+		runner=runner->next;
+		previous=previous->next;
+	}
+	return NULL;
+	
+}
+
+
+void printList(node** head)
+{
+	if(head==NULL)
+	{
+		printf("head==NULL\n");
+		return;
+	}
+	printf("debut printList\n");
+	node* ptr = *head;
+	while(ptr!=NULL)
+	{
+		printf("indice = %d - %s\n", ptr->indice, pkt_get_payload(ptr->pkt));
+		ptr=ptr->next;
+	}
+}
+
+
+
+/*
 int main()
 {
 	int a = createList(head);
@@ -119,4 +186,8 @@ int main()
 		ptr=ptr->next;
 	}
 
+	printf("L'indice est 4 est dans la liste : %p\n", isInList(4));
+	return 0;
+
 }
+*/
