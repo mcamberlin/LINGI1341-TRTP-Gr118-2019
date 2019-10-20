@@ -23,5 +23,7 @@ pkt_t* isInList(node_t** head, int indice);
 
 void printList(node_t** head);
 
+int freeLinkedList(node_t** head);
+
 
 #endif

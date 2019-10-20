@@ -113,7 +113,7 @@ pkt_t* isInList(node_t** head, int indice)
 
 	if((*head)==NULL)//liste est vide
 	{
-		printf("liste vide \n");
+		printf("liste vide\n \n");
 		return NULL;
 	}
 
@@ -159,6 +159,35 @@ void printList(node** head)
 		printf("indice = %d - %s\n", ptr->indice, pkt_get_payload(ptr->pkt));
 		ptr=ptr->next;
 	}
+	printf("fin printlist\n\n");
+}
+
+int freeLinkedList(node_t** head)
+{
+
+	if(head == NULL)
+	{
+		fprintf(stderr, "**head non spécifié dans freeLinkedList() \n");
+		return -1;
+	}
+	if(*head == NULL) // cas où la liste est vide
+	{
+		return 0;
+	}
+	else // cas où la liste n'est pas vide
+	{
+		node* runner = *head; // noeud courant
+		node* previous=runner;	// noeud précédent
+		*head=NULL;
+		while(runner !=NULL)
+		{
+			previous = runner;
+			runner = runner->next;
+			free(previous);			
+		}
+		//free(*head);
+		return 0;
+	}	
 }
 
 
