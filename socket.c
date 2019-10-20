@@ -1,3 +1,6 @@
+#include "socket.h" 
+#include "packet_implem.h"
+
 #include <stdio.h> // pour fprintf()
 #include <sys/types.h> // pour connect() 
 #include <sys/socket.h> // pour getaddrinfo()
@@ -7,41 +10,7 @@
 #include <unistd.h> // pour read(), write() et close()
 #include <errno.h> // pour le detail des erreurs
 
-
-/** ------------------ struct addrinfo ---------------------
-{
-    * int              ai_family; the desired address family for the returned addresses. 
-    * int              ai_socktype; the preferred socket type
-    * int              ai_protocol; the protocol for the returned socket addresses. Specifying 0 for any protocol
-
-     Other fields must contain either 0 or a null pointer, as appropriate.
-    * int              ai_flags;
-    * size_t           ai_addrlen;
-    * struct sockaddr *ai_addr;
-    * char            *ai_canonname;
-    * struct addrinfo *ai_next;
-
-};*/ 
-
-/* ------------------ struct sockaddr_in6 ---------------------
-{
-               sa_family_t     sin6_family;    AF_INET6 
-               in_port_t       sin6_port;      port number
-               uint32_t        sin6_flowinfo;  IPv6 flow information 
-               struct in6_addr sin6_addr;      IPv6 address 
-               uint32_t        sin6_scope_id;  Scope ID (new in 2.4)
-};*/
-
-/* ------------------ struct pollfd ---------------------------
-{
-	int   fd;          file descriptor
-	short events;      requested events
-	short revents;     returned events 
-};*/
-
-
 /* --------------------------------------------------------------- */
-
 
 /** La fonction real_address() permet de convertir une chaîne de caractères représentant soit un nom de domaine soit une adresse IPv6, en une structure  struct @sockaddr_in6 utilisable par l'OS 
  * @address: The name to resolve
@@ -84,6 +53,7 @@ const char* real_address(const char *address, struct sockaddr_in6 *rval)
     return NULL;
 }
 
+/* --------------------------------------------------------------- */
 
 /** La fonction create_socket() crée un socket et l'initialise.
  * @source_addr: if !NULL, the source address that should be bound to this socket
@@ -143,96 +113,10 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
 	return fd;    
 }
 
+/* --------------------------------------------------------------- */
 
 
-
-/** La fonction read_write_loop() permet de lire le contenu de l'entrée standard et de l'envoyer sur un socket, tout en permettant d'afficher sur la sortie standard ce qui est lu sur ce même socket.  
- * Si A et B tapent en même temps, la lecture et l'écriture est traitée simultanément à l'aide de l'appel système: poll()
- * Loop reading a socket and printing to stdout,
- * while reading stdin and writing to the socket
- * @sfd: The socket file descriptor. It is both bound and connected.
- * @return: as soon as stdin signals EOF
- */
-void read_write_loop(int sfd)
-{
-	const int MAXSIZE = 1024;
-	char buffer_socket[MAXSIZE]; //buffer 
-	char buffer_stdin[MAXSIZE]; //buffer 
-
-	while(1)
-	{
-		nfds_t nfds = 2;
-		struct pollfd filedescriptors[(int) nfds];
-		filedescriptors[0].fd = 0; // Surveiller l'entree standard
-		filedescriptors[0].events = POLLIN; // When there is data to read on stdin
-		filedescriptors[1].fd = sfd; // Surveiller le socket
-		filedescriptors[1].events = POLLIN; // When there is data to read on socket
-		
-		int timeout = -1; //poll() shall wait for an event to occur 
-		
-		int p = poll(filedescriptors,nfds, timeout); 
-		// int poll(struct pollfd fds[], nfds_t nfds, int timeout);
-		if(p == -1)
-		{
-			fprintf(stderr, "Erreur dans poll read_write_loop(): %s \n", strerror(errno));
-			return;
-		}
-
-		if(filedescriptors[1].revents & POLLIN) // There is data to read on the socket
-		{
-			//1. Lire le socket
-            memset(buffer_socket,0,MAXSIZE); // Remettre le buffer à 0 avant d'écrire dedans
-			ssize_t r_socket = read(sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
-			if(r_socket == -1)
-			{
-				fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
-				return;
-			}
-			else
-			{
-				// 2. Afficher sur la sortie standard ce qui a été lu sur le socket
-				ssize_t w_stdout = write(1,buffer_socket,r_socket); // fd = 1 correspond a stdout.
-				if(w_stdout == -1)
-				{
-					fprintf(stderr, "Erreur ecriture sur sortie standard : %s \n", strerror(errno));
-					return;
-				}
-			}
-		}
-		// ----------------------------------------------
-		if(filedescriptors[0].revents & POLLIN) // There is data to read on the stdin
-		{
-			// 3. Lire le contenu de l'entree standard
-			memset(buffer_stdin,0,MAXSIZE); // Remettre le buffer a 0 avant d'ecrire dedans
-			int r_stdin = read(0, buffer_stdin, MAXSIZE); 
-			//ssize_t read(int fd, void *buf, size_t count)
-			// fd = 0 correspond a stdin
-			if(r_stdin == -1)
-			{
-				fprintf(stderr, "Erreur lecture entrée standard dans read_write_loop() : %s \n",strerror(errno));
-				return;
-			}
-			else if(r_stdin == 0)
-			{
-				fprintf(stderr, "Fin de la lecture de l'entrée standard \n");
-				return;
-			}
-			else
-			{
-				// 4. Ecrire le contenu de l'entree standard dans le socket
-                
-				int w_socket = write(sfd, buffer_stdin, r_stdin); //ssize_t write(int fd, const void *buf, size_t count);  
-				if(w_socket == -1)
-				{
-					fprintf(stderr,"Erreur ecriture sur le socket dans read_write_loop : %s\n", strerror(errno));
-					return;
-				}
-			}
-		}
-	}
-}
-
-
+/* --------------------------------------------------------------- */
  
 /** Lorsque un client veut parler à un serveur, il spécifie l'adresse et port du serveur, et choisit un port aléatoire pour lui. Le serveur par contre ne connait pas à priori l'adresse du client qui se connectera. 
  *
