@@ -1,14 +1,20 @@
-#include <stdlib.h> /* EXIT_X */
-#include <stdio.h> /* fprintf */
-#include <unistd.h> /* getopt */
+#include <stdlib.h> // pour EXIT_X
+#include <stdio.h>  // fprintf
+#include <unistd.h> // getopt
 
 #include "packet_interface.h"
 #include "socket.h"
 #include "read_write_loop.h"
+#include "LinkedList.h"
 
 /*--------------------------MAIN------------------------------------*/
 
-
+struct connexion
+{
+	int sfd; // File descriptor du socket ouvert pour la connexion
+	int fd_to_write; // File descriptor pour ecrire dans le fichier correspondant
+	int closed = 0; // Booleen permettant de dire si la connexion est terminee
+};
 
 int nbreConnexion = 1;
 char* formatSortie;
@@ -23,52 +29,109 @@ char* hostname = NULL;
 */
 int main(int argc, char *argv[]) 
 {
-	printf("\n \t\t\t Interprétation des commandes \n");
+	fprintf(stderr,"\n \t\t\t Interprétation des commandes \n");
 	int opt;
 	int index = 1; 
 	if(argc <2)
 	{	
-		fprintf(stderr, "Usage:\n -n      Nombre N de connexions que le recever doit pouvoir traiter de facon concurrente \n -o      type de format pour le formattage des fichiers de sortie\n hostname \n portnumber\n");
-
+		fprintf(stderr, "Usage:\n -n      Nombre N de connexions que le recever doit pouvoir traiter de facon concurrente\n -o      type de format pour le formattage des fichiers de sortie\n hostname \n portnumber (server)\n");
 		return EXIT_FAILURE;	
+	}
+	
+	
+	while (index<argc) // Tant que toutes les options n'ont pas été vérifées
+	{
+		opt = getopt(argc, argv, "o:m:");
+		switch (opt) 
+		{
+			case 'o': // format des fichiers de sortie spécifié
+				formatSortie = argv[index+1];
+				fprintf(stderr,"-o spécifié : %s\n",formatSortie);
+				index+=2;
+				break;
+			case 'm':
+				nbreConnexion = atoi(argv[index+1]);
+				fprintf(stderr,"-m spécifié : %d\n",nbreConnexion);
+				index+=2;
+				break;
+	
+			default: 
+				if(atoi(argv[index]) == 0) // si il ne s'agit d'un hostname
+				{
+					hostname = (char*) malloc(sizeof(argv[index]));
+					if(hostname == NULL)
+					{
+						fprintf(stderr,"Erreur allocation de mémoire pour @hostname dans interprétation des commandes");
+						return EXIT_FAILURE;
+					}
+					//size_t taille = sizeof(argv[index]);
+					//strncpy(hostname, argv[index],taille);	
+					
+					// char *strncpy(char *dest, const char *src, size_t n);
+					hostname = argv[index];
+					fprintf(stderr,"hostname : %s \n",hostname);
+					index +=1;
+				}
+				else // si il s'agit du numéro de port
+				{
+					port = atoi(argv[index]);
+					fprintf(stderr,"port : %d\n",port);
+					index+=1;
+				}			
+				break;				
+		}
 	}
 	fprintf(stderr,"\t\t\t Fin de l'interprétation des commandes \n\n");
 
-
-	/* Resolve the hostname */
+	// Resolve the hostname 
 	struct sockaddr_in6 addr;
 	const char *err = real_address(hostname, &addr);
 	if (err) {
-		fprintf(stderr, "Could not resolve hostname %s: %s\n", host, err);
+		fprintf(stderr, "Could not resolve hostname %s: %s\n", hostname, err);
 		return EXIT_FAILURE;
 	}
 
+	// Creation d'un tableau de @nbreConnexion de structure @connexion
+	struct connexion[nbreConnexion];
+	
+	
+	// Get a socket
+	// For loop for n sockets
+	for(int i=0; i<nbreConnexion;i++)
+	{		
+		int sfd = create_socket(NULL,-1, &addr, port); // Bound
+		//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
+		connexion[i].sfd = sfd;
 
-/*
-	 Get a socket 
-	int sfd;
-	if () {
-		sfd = create_socket(NULL, -1, &addr, port);  Connected 
-	} 
-	else {
-		sfd = create_socket(&addr, port, NULL, -1); Bound 
-		if (sfd > 0 && wait_for_client(sfd) < 0) {  Connected 
-			fprintf(stderr,
-					"Could not connect the socket after the first message.\n");
-			close(sfd);
+		int w = wait_for_client(sfd);
+		if (sfd > 0 && w < 0) 
+		{ 
+			fprintf(stderr,	"Could not connect the %dth socket after the first message.\n", i);
+			connexion[i].closed = 1;
+			return EXIT_FAILURE;
+		}
+		if (sfd < 0) {
+			fprintf(stderr, "Failed to create the socket!\n");
+			connexion[i].closed = 1;
 			return EXIT_FAILURE;
 		}
 	}
-	if (sfd < 0) {
-		fprintf(stderr, "Failed to create the socket!\n");
-		return EXIT_FAILURE;
+	
+	
+	read_write_loop(/*!!!!!!!!!!!!! */);
+
+	//fermer les fd des sockets
+	for(int i=0; i<nbreConnexion;i++)
+	{
+		close(connexion[i].sfd);
 	}
-	 Process I/O 
-	read_write_loop(sfd);
 
+	//fermer les fd des fd_to_write
+	for(int i=0; i<nbreConnexion;i++)
+	{
+		close(connexion[i].fd_to_write);
+	}
 
-	close(sfd);
-*/
-
+	fprintf(stderr,"FIN MAIN \n");
 	return EXIT_SUCCESS;
 }

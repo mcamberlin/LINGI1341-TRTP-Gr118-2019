@@ -1,5 +1,5 @@
 #include "socket.h" 
-#include "packet_implem.h"
+#include "packet_interface.h"
 
 #include <stdio.h> // pour fprintf()
 #include <sys/types.h> // pour connect() 
@@ -65,15 +65,16 @@ node_t** head;
  * @sfd: The socket file descriptor. It is both bound and connected.
  * @return: dès qu'un paquet DATA avec le champ length à 0 et dont le numéro de séquence correspond au dernier numéro d'acquittement envoyé par le destinataire.
  */
-void read_write_loop(int sfd)
+void read_write_loop(int[] fd_to_listen, int[] fd_to_write)
 {
 	const int MAXSIZE = MAX_PAYLOAD_SIZE + 12 + 4; //   EN-TETE + CRC1 + payload + CRC2 
 	char buffer_socket[MAXSIZE]; //buffer de la lecture du socket 
 
-	while(1)
+	while(1) 
 	{
 		nfds_t nfds = 1;
 		struct pollfd filedescriptors[(int) nfds];
+		//for loop
 		filedescriptors[0].fd = sfd;         // Surveiller le socket
 		filedescriptors[0].events = POLLIN; // When there is data to read on socket
 		
@@ -86,7 +87,8 @@ void read_write_loop(int sfd)
 			fprintf(stderr, "Erreur dans poll read_write_loop(): %s \n", strerror(errno));
 			return;
 		}
-
+		
+		//for loop
 		if(filedescriptors[0].revents & POLLIN) // There is data to read on the socket
 		{
 			//1. Lire le socket
@@ -172,6 +174,7 @@ void read_write_loop(int sfd)
 					{
 						if(seqnum==windowMin) //si le numero de seq correspond a la limite min de la fenetre, on ecrit ce paquet et tout ceux qui suivent dans une liste chainee pour les trier par seqnum 
 						{
+							// FAIRE LES OPEN AVANT !!!! 
 							int fichier = open("fichierSortie.txt", O_CREAT | O_WRONLY | O_APPEND, S_IRWXU); //si le fichier n'existe pas, il le crée
 							if(fichier == -1) // cas où @fopen() a planté
 							{

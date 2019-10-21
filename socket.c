@@ -1,5 +1,6 @@
 #include "socket.h" 
-#include "packet_implem.h"
+#include "packet_interface.h"
+#include "LinkedList.h"
 
 #include <stdio.h> // pour fprintf()
 #include <sys/types.h> // pour connect() 

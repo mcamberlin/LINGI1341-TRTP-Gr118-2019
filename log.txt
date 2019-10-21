@@ -1,0 +1,8 @@
+
+ 			 Interprétation des commandes 
+-m spécifié : 4
+hostname : :: 
+port : 12345
+			 Fin de l'interprétation des commandes 
+
+FIN MAIN 
