@@ -9,6 +9,23 @@
 #include <poll.h> // pour pollfd
 #include <unistd.h> // pour read(), write() et close()
 #include <errno.h> // pour le detail des erreurs
+#include "LinkedList.h"
+
+
+
+typedef struct connexion
+{
+	int sfd; // File descriptor du socket ouvert pour la connexion
+	int fd_to_write; // File descriptor pour ecrire dans le fichier correspondant
+	int closed; // Par defaut les connexions ne sont pas terminee
+
+	uint8_t tailleWindow ; // taille par défaut de la fenetre du sender[i]
+	int windowMin;
+	int windowMax;
+	
+	node_t** head; //tete de la liste chainee associee à la connexion[i]
+	
+}connexion;
 
 /**
   * return true si c'est dans l'intervalle de la fenetre et false sinon
@@ -33,7 +50,7 @@ void augmenteBorne(int* borne);
  * @return: dès qu'un paquet DATA avec le champ length à 0 et dont le numéro de séquence correspond au dernier numéro d'acquittement envoyé par le destinataire.
  */
 
-void read_write_loop(connexion[] tabConnexion, int nbreConnexion);
+void read_write_loop(connexion tabConnexion[], int nbreConnexion);
 
 
 /** ------------------ struct addrinfo ---------------------

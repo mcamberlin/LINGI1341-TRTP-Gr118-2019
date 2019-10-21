@@ -507,7 +507,7 @@ pkt_status_code pkt_set_payload(pkt_t *pkt, const char *data, const uint16_t len
 		pkt->payload=NULL;
 		pkt->length=0;
 	}
-	pkt->payload = (char*) malloc(length);
+	pkt->payload = (char*) calloc(1,length);
 	if(pkt->payload == NULL)
 	{
 		return E_NOMEM;

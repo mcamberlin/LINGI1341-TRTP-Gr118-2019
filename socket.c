@@ -131,6 +131,7 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
  */
 int wait_for_client(int sfd)
 {	
+
 	// 1. Intercepter le premier message reçu par le serveur, afin de connaître l'adresse du client via recvfrom()
 	
 	struct sockaddr_in6 client_addr; // pour s'assurer qu'il s'agisse d'une adresse IPv6
@@ -144,6 +145,8 @@ int wait_for_client(int sfd)
 	    fprintf(stderr, "Erreur avec recfrom() dans wait_for_client(): %s \n", strerror(errno));
 	    return -1;
 	}
+
+	fprintf(stderr, "dans wait for client apres recvfrom %d\n", client_addr.sin6_scope_id);
 
 	// 2. Connecter le socket du serveur au client via connect()
 	int connexion = connect(sfd, (struct sockaddr *) &client_addr,addrlen);
