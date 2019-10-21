@@ -65,10 +65,15 @@ node_t** head;
  * @sfd: The socket file descriptor. It is both bound and connected.
  * @return: dès qu'un paquet DATA avec le champ length à 0 et dont le numéro de séquence correspond au dernier numéro d'acquittement envoyé par le destinataire.
  */
-void read_write_loop(int[] fd_to_listen, int[] fd_to_write)
+//void read_write_loop(int[] fd_to_listen, int[] fd_to_write) //METTRE ICI LE TABLEAU DE CONNEXION
+void read_write_loop(connexion[] tabConnexion, int nbreConnexion)
 {
 	const int MAXSIZE = MAX_PAYLOAD_SIZE + 12 + 4; //   EN-TETE + CRC1 + payload + CRC2 
 	char buffer_socket[MAXSIZE]; //buffer de la lecture du socket 
+
+	for(int i=0; i<nbreConnexion; i++)
+	{
+		
 
 	while(1) 
 	{
@@ -114,6 +119,20 @@ void read_write_loop(int[] fd_to_listen, int[] fd_to_write)
 				if(code == E_TR)
 				{
 					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champ TR */, code = %d \n", code);
+					//envoie d'un NACK
+					pkt_t* pkt_nack = pkt_new();
+					pkt_set_type(pkt_nack, PTYPE_ACK);
+					pkt_set_seqnum(pkt_nack, pkt_get_seqnum(pkt_recu));
+					char* buf = malloc(sizeof(pkt_t)); //Quelle est la taille d'un NACK ???????????????????
+					if(buf==NULL)
+					{
+						fprintf(stderr, "Erreur malloc nack\n");
+						return;
+					}
+					pkt_status_code status = pkt_encode(pkt_nack, buf, sizeof(pkt_t));
+					//J'AI BESOIN DE L'ADRESSE POUR ENVOYER OU EST ELLE ?
+					//int sent = sendto(fd_to_listen[i], buf, sizeof(buf), 0, 
+					//ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen);
 				}
 				if(code == E_LENGTH)
 				{
@@ -151,7 +170,18 @@ void read_write_loop(int[] fd_to_listen, int[] fd_to_write)
 			if(code == PKT_OK) //PKT_OK = 0,     
 			{
 				fprintf(stderr, "SUCCES DECODE : /* Le paquet a ete traite avec succes */ \n"); 
-
+				int dernierAck = windowMin-1;
+				if(windowMin==0)
+				{
+					dernierAck = 255;
+				}
+				if(pkt_get_type(pkt_recu) == PTYPE_DATA && pkt_get_length(pkt_recu)==0 && pkt_get_seqnum(pkt_recu) == dernierAck)
+				{
+					//fin de la transmission si PTYPEDATA && length== && seqnum == dernier seqnum envoyé
+					conexion[i].closed == 1;
+					
+				}				
+				
 				if(pkt_get_type(pkt_recu) == PTYPE_DATA) //permet d'ignorer les autres types
 				{
 					int windowSender = pkt_get_window(pkt_recu);
@@ -234,8 +264,11 @@ void read_write_loop(int[] fd_to_listen, int[] fd_to_write)
 							}
 							printList(head);
 						}
+					}
 
 				}
+				//envoie d'un ack
+				//sendto : besoin de l'adresse de l'expediteur 
 			}
 		}
 	}

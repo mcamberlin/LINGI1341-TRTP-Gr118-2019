@@ -14,6 +14,7 @@ struct connexion
 	int sfd; // File descriptor du socket ouvert pour la connexion
 	int fd_to_write; // File descriptor pour ecrire dans le fichier correspondant
 	int closed = 0; // Booleen permettant de dire si la connexion est terminee
+	
 };
 
 int nbreConnexion = 1;
@@ -83,6 +84,8 @@ int main(int argc, char *argv[])
 	}
 	fprintf(stderr,"\t\t\t Fin de l'interprétation des commandes \n\n");
 
+
+
 	// Resolve the hostname 
 	struct sockaddr_in6 addr;
 	const char *err = real_address(hostname, &addr);
@@ -92,7 +95,7 @@ int main(int argc, char *argv[])
 	}
 
 	// Creation d'un tableau de @nbreConnexion de structure @connexion
-	struct connexion[nbreConnexion];
+	struct connexion tabConnexion[nbreConnexion];
 	
 	
 	// Get a socket
@@ -101,7 +104,7 @@ int main(int argc, char *argv[])
 	{		
 		int sfd = create_socket(NULL,-1, &addr, port); // Bound
 		//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
-		connexion[i].sfd = sfd;
+		tabConnexion[i].sfd = sfd;
 
 		int w = wait_for_client(sfd);
 		if (sfd > 0 && w < 0) 
@@ -117,8 +120,8 @@ int main(int argc, char *argv[])
 		}
 	}
 	
-	
-	read_write_loop(/*!!!!!!!!!!!!! */);
+	//void read_write_loop(connexion[] tabConnexion, int nbreConnexion)
+	read_write_loop(tabConnexion, nbreConnexion);
 
 	//fermer les fd des sockets
 	for(int i=0; i<nbreConnexion;i++)
