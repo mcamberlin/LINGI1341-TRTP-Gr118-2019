@@ -12,7 +12,7 @@
 
 
 /**
-  *return true si c'est dans l'intervalle de la fenetre et false sinon
+  * return true si c'est dans l'intervalle de la fenetre et false sinon
   *
   *
 */
@@ -53,11 +53,6 @@ void augmenteBorne(int* borne)
 
 
 
-uint8_t tailleWindow = 1; // taille par défaut de la fenetre du sender
-int windowMin =0;
-int windowMax = 0;
-node_t** head;
-
 /** La fonction read_write_loop() permet de lire le contenu du socket et l'ecrire dans un fichier, tout en permettant de renvoyer des accuses sur ce meme socket.
  * Si A et B tapent en même temps, la lecture et l'écriture est traitée simultanément à l'aide de l'appel système: poll()
  * Loop reading a socket and writing into a file,
@@ -65,26 +60,27 @@ node_t** head;
  * @sfd: The socket file descriptor. It is both bound and connected.
  * @return: dès qu'un paquet DATA avec le champ length à 0 et dont le numéro de séquence correspond au dernier numéro d'acquittement envoyé par le destinataire.
  */
-//void read_write_loop(int[] fd_to_listen, int[] fd_to_write) //METTRE ICI LE TABLEAU DE CONNEXION
+
 void read_write_loop(connexion[] tabConnexion, int nbreConnexion)
 {
 	const int MAXSIZE = MAX_PAYLOAD_SIZE + 12 + 4; //   EN-TETE + CRC1 + payload + CRC2 
 	char buffer_socket[MAXSIZE]; //buffer de la lecture du socket 
 
-	for(int i=0; i<nbreConnexion; i++)
-	{
-		
+	nfds_t nfds = nbreConnexion;
+	struct pollfd filedescriptors[(int) nfds];
+	int nbreConnexionEnCours = nbreConnexion; // nbre de connexion non fermees
 
-	while(1) 
+	for(int i=0; i<nbreConnexion;i++)
 	{
-		nfds_t nfds = 1;
-		struct pollfd filedescriptors[(int) nfds];
-		//for loop
-		filedescriptors[0].fd = sfd;         // Surveiller le socket
-		filedescriptors[0].events = POLLIN; // When there is data to read on socket
-		
-		int timeout = -1; //poll() shall wait for an event to occur 
-		
+		filedescriptors[i].fd = connexion[i].sfd;         // Surveiller le socket
+		filedescriptors[i].events = POLLIN; 		  // Surveiller lorsque il y a de la donnee a lire sur le socket
+	}
+	
+	int timeout = -1; //poll() shall wait for an event to occur 
+
+
+	while(nbreConnexionEnCours>0) // tant que tous les connexions n'ont pas ete fermees 
+	{
 		int p = poll(filedescriptors,nfds, timeout); 
 		// int poll(struct pollfd fds[], nfds_t nfds, int timeout);
 		if(p == -1)
@@ -93,182 +89,201 @@ void read_write_loop(connexion[] tabConnexion, int nbreConnexion)
 			return;
 		}
 		
-		//for loop
-		if(filedescriptors[0].revents & POLLIN) // There is data to read on the socket
+		for(int i=0; i<nbreConnexion && connexion[i].closed == 0;i++)
+		//Boucle pour parcourir le tableau @filedescriptors et ne pas verifier les connexions deja 
 		{
-			//1. Lire le socket
-            		memset(buffer_socket,0,MAXSIZE); // Remettre le buffer à 0 avant d'écrire dedans
-			ssize_t r_socket = read(sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
-			if(r_socket == -1)
-			{
-				fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
-				return;
-			}
-			
-			// 2. TRANSFORMER le buffer en un paquet avec decode
-			pkt_t* pkt_recu = pkt_new();
-			
-			pkt_status_code code = pkt_decode((char*) buffer_in, r_socket, pkt_recu );
 
-			if(code != PKT_OK) // Si le paquet n'est pas conforme
+			if(filedescriptors[i].revents & POLLIN) // There is data to read on the socket
 			{
-				if(code == E_TYPE) // Erreur liée au champ Type
+				//1. Lire le socket
+		    		memset(buffer_socket,0,MAXSIZE); // Remettre le buffer à 0 avant d'écrire dedans
+				ssize_t r_socket = read(connexion[i].sfd, buffer_socket, MAXSIZE); //ssize_t read(int fd, void *buf, size_t count)
+				if(r_socket == -1)
 				{
-					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Type */, code = %d \n", code);
+					fprintf(stderr, "Erreur lecture socket : %s \n", strerror(errno));
+					return;
 				}
-				if(code == E_TR)
+				
+				// 2. TRANSFORMER le buffer en un paquet avec decode
+				pkt_t* pkt_recu = pkt_new();
+				
+				pkt_status_code code = pkt_decode((char*) buffer_in, r_socket, pkt_recu );
+
+				if(code != PKT_OK) // Si le paquet n'est pas conforme
 				{
-					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champ TR */, code = %d \n", code);
-					//envoie d'un NACK
-					pkt_t* pkt_nack = pkt_new();
-					pkt_set_type(pkt_nack, PTYPE_ACK);
-					pkt_set_seqnum(pkt_nack, pkt_get_seqnum(pkt_recu));
-					char* buf = malloc(sizeof(pkt_t)); //Quelle est la taille d'un NACK ???????????????????
-					if(buf==NULL)
+					if(code == E_TYPE) // Erreur liée au champ Type
 					{
-						fprintf(stderr, "Erreur malloc nack\n");
-						return;
+						fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Type */, code = %d \n", code);
 					}
-					pkt_status_code status = pkt_encode(pkt_nack, buf, sizeof(pkt_t));
-					//J'AI BESOIN DE L'ADRESSE POUR ENVOYER OU EST ELLE ?
-					//int sent = sendto(fd_to_listen[i], buf, sizeof(buf), 0, 
-					//ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen);
-				}
-				if(code == E_LENGTH)
-				{
-					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Length  */, code = %d \n", code);
-
-				}
-				if(code == E_CRC)
-				{
-					fprintf(stderr,"Erreur DECODE : /* CRC invalide */, code = %d \n", code);
-				}
-				if(code == E_WINDOW)
-				{
-					fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Window */, code = %d \n", code);
-				}
-				if(code == E_SEQNUM)
-				{
-					fprintf(stderr,"Erreur DECODE : /* Numero de sequence invalide */, code = %d \n", code);
-				}
-				if(code == E_NOMEM)
-				{
-					fprintf(stderr,"Erreur DECODE : /* Pas assez de memoire */, code = %d \n", code);
-				}
-				if(code == E_NOHEADER)
-				{
-					fprintf(stderr, "Erreur DECODE : /* Le paquet n'a pas de header (trop court) */, code = %d \n", code);    			
-				}
-				if(code == E_UNCONSISTENT)
-				{
-					fprintf(stderr, "Erreur DECODE : /* Le paquet est incoherent */, code = %d \n", code);    
-				}
-				
-			}
-
-			// 3. Reagir differemment selon le type recu
-			if(code == PKT_OK) //PKT_OK = 0,     
-			{
-				fprintf(stderr, "SUCCES DECODE : /* Le paquet a ete traite avec succes */ \n"); 
-				int dernierAck = windowMin-1;
-				if(windowMin==0)
-				{
-					dernierAck = 255;
-				}
-				if(pkt_get_type(pkt_recu) == PTYPE_DATA && pkt_get_length(pkt_recu)==0 && pkt_get_seqnum(pkt_recu) == dernierAck)
-				{
-					//fin de la transmission si PTYPEDATA && length== && seqnum == dernier seqnum envoyé
-					conexion[i].closed == 1;
-					
-				}				
-				
-				if(pkt_get_type(pkt_recu) == PTYPE_DATA) //permet d'ignorer les autres types
-				{
-					int windowSender = pkt_get_window(pkt_recu);
-					if(windowSender != tailleWindow) //Si la fenetre actuelle est differente de celle recue dans le pkt (fenetre dynamique)
+					if(code == E_TR)//envoie d'un NACK
 					{
-						tailleWindow = windowSender;
-						windowMax = windowMin + tailleWindow - 1; 
-						
-						
-						if(windowMax > 255) // il faut encore prendre le cas ou la fenetre recommence a zero
+			
+						fprintf(stderr,"Erreur DECODE : /* Erreur liee au champ TR */, code = %d \n", code);
+						pkt_t* pkt_nack = pkt_new();
+						pkt_set_type(pkt_nack, PTYPE_NACK);
+						pkt_set_seqnum(pkt_nack, pkt_get_seqnum(pkt_recu));
+						char* buf = (sizeof(pkt_nack)); //Quelle est la taille d'un NACK ???????????????????
+						if(buf==NULL)
 						{
-							windowMax = windowMax-255;
+							fprintf(stderr, "Erreur malloc nack\n");
+							return;
 						}
-					}
-
-					//printList(head);
-
-					uint8_t seqnum = pkt_get_seqnum(pkt_recu);
-					if(isInWindow(seqnum, windowMin, windowMax)) //si seqnum est dans la fenetre courante de reception 
-					{
-						if(seqnum==windowMin) //si le numero de seq correspond a la limite min de la fenetre, on ecrit ce paquet et tout ceux qui suivent dans une liste chainee pour les trier par seqnum 
+						pkt_status_code status = pkt_encode(pkt_nack, buf, sizeof(pkt_nack));
+						//J'AI BESOIN DE L'ADRESSE POUR ENVOYER OU EST ELLE ?
+						ssize_t sent = send(connexion[i].sfd, buf, sizeof(buf), 0);
+						//ssize_t send(int socket, const void *buffer, size_t length, int flags);
+						if(sent == -1)
 						{
-							// FAIRE LES OPEN AVANT !!!! 
-							int fichier = open("fichierSortie.txt", O_CREAT | O_WRONLY | O_APPEND, S_IRWXU); //si le fichier n'existe pas, il le crée
-							if(fichier == -1) // cas où @fopen() a planté
-							{
-								fprintf(stderr, "Erreur dans l'ouverture du fichier \n");
-								return;
-							}
-							int w = write(fichier, pkt_get_payload(pkt_recu), pkt_get_length(pkt_recu));
-							if(w==-1)
-							{
-								fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
-							}
+							fprintf(stderr,"L'envoi du NACK pour la connexion %d a echoue \n",connexion[i].sfd);
+						}
+						free(buf);
+						
+					}
+					if(code == E_LENGTH)
+					{
+						fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Length  */, code = %d \n", code);
 
-							pkt_del(pkt_recu);
-							augmenteBorne(&windowMin);
-							augmenteBorne(&windowMax);
-							int seqnum_suivant = seqnum+1;
+					}
+					if(code == E_CRC)
+					{
+						fprintf(stderr,"Erreur DECODE : /* CRC invalide */, code = %d \n", code);
+					}
+					if(code == E_WINDOW)
+					{
+						fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Window */, code = %d \n", code);
+					}
+					if(code == E_SEQNUM)
+					{
+						fprintf(stderr,"Erreur DECODE : /* Numero de sequence invalide */, code = %d \n", code);
+					}
+					if(code == E_NOMEM)
+					{
+						fprintf(stderr,"Erreur DECODE : /* Pas assez de memoire */, code = %d \n", code);
+					}
+					if(code == E_NOHEADER)
+					{
+						fprintf(stderr, "Erreur DECODE : /* Le paquet n'a pas de header (trop court) */, code = %d \n", code);    			
+					}
+					if(code == E_UNCONSISTENT)
+					{
+						fprintf(stderr, "Erreur DECODE : /* Le paquet est incoherent */, code = %d \n", code);    
+					}
+					
+				}
 
-							printf("avant isinlist\n");
-							pkt_t* pktSuivant = isInList(head, seqnum_suivant);
-							printf("apres isinlist\n");
-							if(pktSuivant == NULL)
+				// 3. Reagir differemment selon le type recu
+				if(code == PKT_OK)     
+				{
+					fprintf(stderr, "SUCCES DECODE : /* Le paquet a ete traite avec succes */ \n"); 
+					int dernierAck = connexion[i].windowMin-1;//correspond au dernier numero d'acquitement recu
+					if(connexion[i].windowMin==0)
+					{
+						dernierAck = 255;
+					}
+					if(pkt_get_type(pkt_recu) == PTYPE_DATA && pkt_get_length(pkt_recu)==0 && pkt_get_seqnum(pkt_recu) == dernierAck)//fin de la transmission si PTYPEDATA && length== && seqnum == dernier seqnum envoyé
+					{
+						connexion[i].closed = 1;
+						nbreConnexionEnCours = nbreConnexionEnCours -1; //Met à jour le nombre de connexions non fermée
+						
+					}				
+					
+					if(pkt_get_type(pkt_recu) == PTYPE_DATA && connexion[i].closed==0) //permet d'ignorer les autres types
+					{
+						int windowSender = pkt_get_window(pkt_recu);
+						if(windowSender != connexion[i].tailleWindow) //Si la fenetre actuelle est differente de celle recue dans le pkt (fenetre dynamique)
+						{
+							connexion[i].tailleWindow = windowSender;
+							connexion[i].windowMax = connexion[i].windowMin + connexion[i].tailleWindow - 1; 
+							
+							
+							if(connexion[i].windowMax > 255) // il faut encore prendre le cas ou la fenetre recommence a zero
 							{
-								printf("le numero suivant n'est pas dans la liste, %d\n", seqnum_suivant);
+								connexion[i].windowMax = connexion[i].windowMax-255;
 							}
-							else
-							{
-								printf("début boucle while\n");
-								printList(head);
-								printf("message = %s\n", pkt_get_payload(pktSuivant));
+						}
 
-								while(pktSuivant != NULL)
+						//printList(connexion[i].head);
+
+						uint8_t seqnum = pkt_get_seqnum(pkt_recu);
+						if(isInWindow(seqnum, connexion[i].windowMin, connexion[i].windowMax)) //si seqnum est dans la fenetre courante de reception 
+						{
+							if(seqnum==connexion[i].windowMin) //si le numero de seq correspond a la limite min de la fenetre, on ecrit ce paquet et tout ceux qui suivent dans une liste chainee pour les trier par seqnum 
+							{
+								
+								int w = write(connexion[i].fd_to_write, pkt_get_payload(pkt_recu), pkt_get_length(pkt_recu));
+								if(w==-1)
 								{
-									w = write(fichier, pkt_get_payload(pktSuivant), pkt_get_length(pktSuivant));
-									if(w==-1)
+									fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
+								}
+
+								pkt_del(pkt_recu);
+								augmenteBorne(&(connexion[i].windowMin));
+								augmenteBorne(&(connexion[i].windowMax));
+								int seqnum_suivant = seqnum+1;
+
+								printf("avant isinlist\n");
+								pkt_t* pktSuivant = isInList(connexion[i].head, seqnum_suivant);
+								printf("apres isinlist\n");
+								if(pktSuivant == NULL)
+								{
+									printf("le numero suivant n'est pas dans la liste, %d\n", seqnum_suivant);
+								}
+								else
+								{
+									printf("début boucle while\n");
+									printList(connexion[i].head);
+									printf("message = %s\n", pkt_get_payload(pktSuivant));
+
+									while(pktSuivant != NULL)
 									{
-										fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
-									}
-									pkt_del(pktSuivant);
-									seqnum_suivant ++;
-									pktSuivant = isInList(head, seqnum_suivant);
-									if(pktSuivant!=NULL)
-									{
-										augmenteBorne(&windowMin);
-										augmenteBorne(&windowMax);
+										w = write(connexion[i].fd_to_write, pkt_get_payload(pktSuivant), pkt_get_length(pktSuivant));
+										if(w==-1)
+										{
+											fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
+										}
+										pkt_del(pktSuivant);
+										seqnum_suivant ++;
+										pktSuivant = isInList(connexion[i].head, seqnum_suivant);
+										if(pktSuivant!=NULL)
+										{
+											augmenteBorne(&(connexion[i].windowMin));
+											augmenteBorne(&(connexion[i].windowMax));
+										}
 									}
 								}
+								
 							}
-							
-						}
-						else //le seqnum appartient a la fenetre mais plus grand que la borne inferieur -> on met dans la liste chainee
-						{
-							printf("met dans la liste chainee\n");
-							int err = insert(head, pkt_recu, pkt_get_seqnum(pkt_recu));
-							if(err == -1)
+							else //le seqnum appartient a la fenetre mais plus grand que la borne inferieur -> on met dans la liste chainee
 							{
-								fprintf(stderr, "Erreur dans l'insertion dans la liste chainee  \n");
+								printf("met dans la liste chainee\n");
+								int err = insert(connexion[i].head, pkt_recu, pkt_get_seqnum(pkt_recu));
+								if(err == -1)
+								{
+									fprintf(stderr, "Erreur dans l'insertion dans la liste chainee  \n");
+								}
+								printList(connexion[i].head);
 							}
-							printList(head);
 						}
+						//envoie d'un ACK
+						pkt_t* pkt_ack = pkt_new();
+						pkt_set_type(pkt_ack, PTYPE_ACK);
+						pkt_set_seqnum(pkt_ack, pkt_get_seqnum(pkt_recu));
+						char* buf = malloc(sizeof(pkt_ack)); 
+						if(buf==NULL)
+						{
+							fprintf(stderr, "Erreur malloc ack dans read_write_loop\n");
+							return;
+						}
+						pkt_status_code status = pkt_encode(pkt_ack, buf, sizeof(pkt_ack));
+						ssize_t sent = send(connexion[i].sfd, buf, sizeof(buf), 0);
+						//ssize_t send(int socket, const void *buffer, size_t length, int flags);
+						if(sent == -1)
+						{
+							fprintf(stderr,"L'envoi du ACK pour la connexion %d a echoue \n",connexion[i].sfd);
+						}
+						free(buf); 
 					}
-
 				}
-				//envoie d'un ack
-				//sendto : besoin de l'adresse de l'expediteur 
 			}
 		}
 	}

@@ -10,14 +10,30 @@
 #include <unistd.h> // pour read(), write() et close()
 #include <errno.h> // pour le detail des erreurs
 
-/** La fonction read_write_loop() permet de lire le contenu de l'entrée standard et de l'envoyer sur un socket, tout en permettant d'afficher sur la sortie standard ce qui est lu sur ce même socket.  
+/**
+  * return true si c'est dans l'intervalle de la fenetre et false sinon
+  *
+  *
+*/
+int isInWindow(int seqnum, int windowMin, int windowMax);
+
+/**
+  *augmente la borne de la window tout en la remettant a zero si elle depasse la limite 
+  *de 255
+  *
+*/
+void augmenteBorne(int* borne);
+
+
+/** La fonction read_write_loop() permet de lire le contenu du socket et l'ecrire dans un fichier, tout en permettant de renvoyer des accuses sur ce meme socket.
  * Si A et B tapent en même temps, la lecture et l'écriture est traitée simultanément à l'aide de l'appel système: poll()
- * Loop reading a socket and printing to stdout,
- * while reading stdin and writing to the socket
+ * Loop reading a socket and writing into a file,
+ * while writing to the socket
  * @sfd: The socket file descriptor. It is both bound and connected.
- * @return: as soon as stdin signals EOF
+ * @return: dès qu'un paquet DATA avec le champ length à 0 et dont le numéro de séquence correspond au dernier numéro d'acquittement envoyé par le destinataire.
  */
-void read_write_loop(int sfd);
+
+void read_write_loop(connexion[] tabConnexion, int nbreConnexion);
 
 
 /** ------------------ struct addrinfo ---------------------

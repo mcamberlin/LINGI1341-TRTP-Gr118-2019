@@ -7,18 +7,27 @@
 #include "read_write_loop.h"
 #include "LinkedList.h"
 
+//gcc receiver.c LinkedList.c packet_implem.c read_write_loop.c socket.c -o receiver -lz 
+// -Wall -Werror -Wextra -Wshawdow
+
 /*--------------------------MAIN------------------------------------*/
 
 struct connexion
 {
 	int sfd; // File descriptor du socket ouvert pour la connexion
 	int fd_to_write; // File descriptor pour ecrire dans le fichier correspondant
-	int closed = 0; // Booleen permettant de dire si la connexion est terminee
+	int closed = 0; // Par defaut les connexions ne sont pas terminee
+
+	uint8_t tailleWindow = 1; // taille par défaut de la fenetre du sender[i]
+	int windowMin =0;
+	int windowMax = 0;
+	
+	node_t** head; //tete de la liste chainee associee à la connexion[i]
 	
 };
 
 int nbreConnexion = 1;
-char* formatSortie;
+char* formatSortie = "fichier_%02d.txt";
 int port = 0;
 char* hostname = NULL;
 
@@ -100,7 +109,7 @@ int main(int argc, char *argv[])
 	
 	// Get a socket
 	// For loop for n sockets
-	for(int i=0; i<nbreConnexion;i++)
+	for(int i=0; i<nbreConnexion;i++) //creation d'un socket par connexion
 	{		
 		int sfd = create_socket(NULL,-1, &addr, port); // Bound
 		//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
@@ -118,6 +127,21 @@ int main(int argc, char *argv[])
 			connexion[i].closed = 1;
 			return EXIT_FAILURE;
 		}
+		
+		FILE* f = fopen(formatSortie,i,"w+"); //read,Write et create
+		if(f == NULL)
+		{
+			fprintf(stderr, "Erreur dans l'ouverture du fichier \n");
+			return;
+		}
+		int fichier = fileno(*f);
+		//int fichier = fopen(formatSortie, O_CREAT | O_WRONLY | O_APPEND, S_IRWXU); //si le fichier n'existe pas, il le crée
+		if(fichier == -1) // cas où @fopen() a planté
+		{
+			fprintf(stderr, "Erreur dans fileno() \n");
+			return;
+		}
+		connexion[i].fd_to_write = fichier;
 	}
 	
 	//void read_write_loop(connexion[] tabConnexion, int nbreConnexion)

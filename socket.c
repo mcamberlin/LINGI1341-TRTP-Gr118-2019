@@ -93,7 +93,7 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
 	    //int bind(int socket, const struct sockaddr *address, socklen_t address_len);
 		if(lien == -1)
 		{
-		    close(fd);
+		    //close(fd); la fermeture des fd se fera tout a la fin de receiver.c
 		    fprintf(stderr,"Erreur dans bind() : %s\n", strerror(errno));
 		    return -1;
 		}   
@@ -105,7 +105,7 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
 		int connect_src = connect(fd,(struct sockaddr*) dest_addr, (socklen_t) sizeof(struct sockaddr_in6));
 		if(connect_src == -1)
 		{
-		    close(fd);
+		    //close(fd); la fermeture des fd se fera tout a la fin de receiver.c
 		    fprintf(stderr,"Erreur dans connect() \n");
 		    return -1;
 		}
