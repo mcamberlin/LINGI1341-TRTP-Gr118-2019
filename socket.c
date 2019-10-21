@@ -136,6 +136,7 @@ int wait_for_client(int sfd)
 	
 	struct sockaddr_in6 client_addr; // pour s'assurer qu'il s'agisse d'une adresse IPv6
 	socklen_t addrlen = sizeof(struct sockaddr_in6);
+	
 
 	ssize_t rec = recvfrom(sfd,NULL,0,MSG_PEEK,(struct sockaddr *) &client_addr,&addrlen);
 	// ssize_t recvfrom(int socket, void *restrict buffer, size_t length, int flags, struct sockaddr *restrict address, socklen_t *restrict address_len);

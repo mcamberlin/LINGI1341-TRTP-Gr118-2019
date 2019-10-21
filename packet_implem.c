@@ -327,8 +327,12 @@ pkt_status_code pkt_encode(const pkt_t* pkt, char *buf, size_t *len)
 	
 	
  	uint32_t crc1=crc32(0,(const Bytef *) &copie, *len);
-    crc1=htonl(crc1);
-    memcpy(buf + (*len), &crc1,4);
+// --------------------------------------------- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+	    crc1=htonl(crc1);
+	fprintf(stderr,"LE CRC1 vaut : %d  a l'adresse : %p\n",crc1, (char*) buf+(*len));
+	    memcpy(buf + (*len), &crc1,4);
+	    fprintf(stderr,"Le contenu du buffer est : %d \n", *((int*) (buf+(*len))));
 	
 	*len = *len +4;
 

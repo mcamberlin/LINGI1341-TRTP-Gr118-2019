@@ -16,7 +16,7 @@
 
 
 
-int nbreConnexion = 1;
+int nbreConnexion = 100;
 char* formatSortie = "fichier_%02d.txt";
 int port = 0;
 char* hostname = NULL;
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 					}
 				}
 				
-				if(isNumber == 1)
+				if(isNumber == 1 && !( atoi( argv[index]) == 0) ) 
 				{
 					port = atoi(argv[index]);
 					fprintf(stderr,"port : %d\n",port);
@@ -107,7 +107,6 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-	fprintf(stderr, "l'adresse retourne par real_adress : %d\n", addr.sin6_scope_id);
 
 	// Creation d'un tableau de @nbreConnexion de structure @connexion
 	connexion tabConnexion[nbreConnexion];
@@ -116,9 +115,9 @@ int main(int argc, char* argv[])
 	// Get a socket
 	// For loop for n sockets
 	for(int i=0; i<nbreConnexion;i++) //creation d'un socket par connexion
-	{	fprintf(stderr, "dans la loop for. nbreConnexion = %d\n", nbreConnexion); 
-			
-		int sfd = create_socket(NULL,-1, &addr, port); // Bound
+	{		
+		int sfd = create_socket(&addr, port,NULL,-1); // Bound
+		fprintf(stderr, "sfd=%d\n",sfd);
 		//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
 		tabConnexion[i].sfd = sfd;
 		tabConnexion[i].closed=0; // Par defaut les connexions ne sont pas terminee =0
@@ -126,9 +125,9 @@ int main(int argc, char* argv[])
 		tabConnexion[i].tailleWindow = 1; // taille par défaut de la fenetre du sender[i]
 		tabConnexion[i].windowMin =0;
 		tabConnexion[i].windowMax = 0;
+		tabConnexion[i].head = createList();
 
-		fprintf(stderr, "sfd = %d\n", sfd);
-
+		fprintf(stderr, "avant wait for client\n");
 		int w = wait_for_client(sfd);
 		if (sfd > 0 && w < 0) 
 		{ 
@@ -137,6 +136,7 @@ int main(int argc, char* argv[])
 			return EXIT_FAILURE;
 		}
 		fprintf(stderr, "apres wait for client\n");
+
 		if (sfd < 0) {
 			fprintf(stderr, "Failed to create the socket!\n");
 			tabConnexion[i].closed = 1;
