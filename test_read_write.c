@@ -52,15 +52,14 @@ void augmenteBorne(int* borne)
 }
 
 uint8_t tailleWindow = 1; // taille par défaut de la fenetre du sender
-int windowMin =0;
-int windowMax = 0;
+int windowMin =255;
+int windowMax = 255;
 node_t** head;
 
 //3.1 PTYPE == DATA
 void test(pkt_t* pkt_recu)
 {
 	
-	printf("head = %p\n", head);
 	if(pkt_get_type(pkt_recu) == PTYPE_DATA)
 	{
 		int windowSender = pkt_get_window(pkt_recu);
@@ -68,8 +67,13 @@ void test(pkt_t* pkt_recu)
 		{
 			tailleWindow = windowSender;
 			windowMax=windowMin+tailleWindow-1; //il faut encore prende le cas ou la fenetre recommence a zero
+			if(windowMax>255)
+			{
+				windowMax = windowMax-255;
+			}
 		}
-
+		printf("windowMin = %d\n", windowMin);
+		printf("windowMax = %d\n", windowMax);
 		printList(head);
 
 		
@@ -90,6 +94,8 @@ void test(pkt_t* pkt_recu)
 					fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
 				}
 
+				printf("le message écrit est : %s\n", pkt_get_payload(pkt_recu));
+
 				pkt_del(pkt_recu);
 				augmenteBorne(&windowMin);
 				augmenteBorne(&windowMax);
@@ -104,10 +110,6 @@ void test(pkt_t* pkt_recu)
 				}
 				else
 				{
-					printf("début boucle while\n");
-					printList(head);
-					printf("message = %s\n", pkt_get_payload(pktSuivant));
-
 					while(pktSuivant != NULL)
 					{
 						w = write(fichier, pkt_get_payload(pktSuivant), pkt_get_length(pktSuivant));
@@ -115,28 +117,29 @@ void test(pkt_t* pkt_recu)
 						{
 							fprintf(stderr, "Erreur dans l'ecriture dans le fichier \n"); 
 						}
+						printf("le message écrit est : %s\n", pkt_get_payload(pktSuivant));
 						pkt_del(pktSuivant);
 						seqnum_suivant ++;
 						pktSuivant = isInList(head, seqnum_suivant);
-						if(pktSuivant!=NULL)
-						{
-							augmenteBorne(&windowMin);
-							augmenteBorne(&windowMax);
-						}
+						augmenteBorne(&windowMin);
+						augmenteBorne(&windowMax);
 					}
 				}
 				
 			}
 			else //le seqnum appartient a la fenetre mais plus grand que la borne inferieur -> on met dans la liste chainee
 			{
-				printf("met dans la liste chainee\n");
 				int err = insert(head, pkt_recu, pkt_get_seqnum(pkt_recu));
 				if(err == -1)
 				{
 					fprintf(stderr, "Erreur dans l'insertion dans la liste chainee  \n");
 				}
+				printf("apres la mise dans la liste chainée\n\n");
 				printList(head);
 			}
+			printf("valeurs des bornes à la fin \n\n");
+			printf("windowMin = %d\n", windowMin);
+			printf("windowMax = %d\n", windowMax);
 
 		}
 	}
@@ -147,31 +150,45 @@ void test(pkt_t* pkt_recu)
 
 int main()
 {
-
+/*
 	head = createList();
 
-	printf("premier msn\n");
-	char msg[] = "Salut ";
-	pkt_t* pkt_recu = pkt_new();
+	printf("frame 1 \n\n");
 
-	pkt_set_type(pkt_recu, PTYPE_DATA);
-	pkt_set_length(pkt_recu, 6);
-	pkt_set_payload(pkt_recu, msg, 6);
-	pkt_set_seqnum(pkt_recu, 1);
-	pkt_set_window(pkt_recu, 2);
-	test(pkt_recu);
+	char msg1[] = "Messsage 1";
+	pkt_t* pkt_recu1 = pkt_new();
 
-	printf("second msg\n");
+	pkt_set_type(pkt_recu1, PTYPE_DATA);
+	pkt_set_length(pkt_recu1, 11);
+	pkt_set_payload(pkt_recu1, msg1, 11);
+	pkt_set_seqnum(pkt_recu1, 255);
+	pkt_set_window(pkt_recu1, 2);
+	test(pkt_recu1);
 
-	char msg2[] = "Salut ca va ?";
+	printf("frame 2 \n\n");
+	char msg0[] = "Message 0";
+	pkt_t* pkt_recu0 = pkt_new();
+
+	pkt_set_type(pkt_recu0, PTYPE_DATA);
+	pkt_set_length(pkt_recu0, 11);
+	pkt_set_payload(pkt_recu0, msg0, 11);
+	pkt_set_seqnum(pkt_recu0, 0);
+	pkt_set_window(pkt_recu0, 2);
+	test(pkt_recu0);
+
+	printf("frame 3 \n\n");
+	char msg2[] = "Message 2";
 	pkt_t* pkt_recu2 = pkt_new();
 
 	pkt_set_type(pkt_recu2, PTYPE_DATA);
-	pkt_set_length(pkt_recu2, 13);
-	pkt_set_payload(pkt_recu2, msg2, 13);
-	pkt_set_seqnum(pkt_recu2, 0);
+	pkt_set_length(pkt_recu2, 11);
+	pkt_set_payload(pkt_recu2, msg2, 11);
+	pkt_set_seqnum(pkt_recu2, 1);
 	pkt_set_window(pkt_recu2, 2);
 	test(pkt_recu2);
+
+	freeLinkedList(head);
+*/
 }
 
 
