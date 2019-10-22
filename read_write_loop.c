@@ -33,12 +33,13 @@ typedef struct connexion
 
 int printPkt(pkt_t* pkt)
 {
+	
 	if(pkt==NULL)
 	{
 		return -1;
 	}
-	
 	fprintf(stderr, "type=%d, tr=%d, window=%d, length=%d, seqnum=%d, timestamp=%d, crc1=%d, payload=%p, crc2=%d\n", pkt_get_type(pkt),pkt_get_tr(pkt),pkt_get_window(pkt),pkt_get_length(pkt),pkt_get_seqnum(pkt),pkt_get_timestamp(pkt),pkt_get_crc1(pkt),pkt_get_payload(pkt),pkt_get_crc2(pkt));
+	fprintf(stderr," ================= \n"); 	
 	return 0;
 }
 
@@ -177,7 +178,7 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 						}
 						fprintf(stderr," ======= PKT NACK ENVOYE ======= \n\t");
 						printPkt(pkt_nack);
-						fprintf(stderr," ================= \n"); 
+						
 
 											
 						pkt_del(pkt_nack);
@@ -227,8 +228,7 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 				// 3. Reagir differemment selon le type recu
 				if(code == PKT_OK)     
 				{
-					fprintf(stderr, "SUCCES DECODE : /* Le paquet a ete traite avec succes */ \n"); 
-					
+
 					if(pkt_get_type(pkt_recu) == PTYPE_DATA && pkt_get_length(pkt_recu)==0 && pkt_get_seqnum(pkt_recu) == dernierAck)//fin de la transmission si PTYPEDATA && length== && seqnum == dernier seqnum envoyé
 					{
 						tabConnexion[i].closed = 1;
@@ -260,7 +260,8 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 							if(seqnum==tabConnexion[i].windowMin) //si le numero de seq correspond a la limite min de la fenetre, on ecrit ce paquet et tout ceux qui suivent dans une liste chainee pour les trier par seqnum 
 							{
 								
-								fprintf(stderr," ======= PKT RECU ======= \n\t"); printPkt(pkt_recu); fprintf(stderr," ================= \n"); 
+								fprintf(stderr," ======= PKT RECU ======= \n"); 
+								printPkt(pkt_recu); 
 
 								int w = write(tabConnexion[i].fd_to_write, pkt_get_payload(pkt_recu), pkt_get_length(pkt_recu));
 								if(w==-1)
@@ -350,9 +351,8 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 						{
 							fprintf(stderr, "Erreur dans pkt_encode d'un ACK\n");
 						}
-						fprintf(stderr," ======= PKT ACCUSE ENVOYE ======= \n\t");
+						fprintf(stderr," ======= PKT ACCUSE ENVOYE ======= \n");
 						printPkt(pkt_ack);
-						fprintf(stderr," ================= \n"); 
 
 											
 						pkt_del(pkt_ack);
