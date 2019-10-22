@@ -117,7 +117,6 @@ int main(int argc, char* argv[])
 	for(int i=0; i<nbreConnexion;i++) //creation d'un socket par connexion
 	{		
 		int sfd = create_socket(&addr, port,NULL,-1); // Bound
-		fprintf(stderr, "sfd=%d\n",sfd);
 		//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
 		tabConnexion[i].sfd = sfd;
 		tabConnexion[i].closed=0; // Par defaut les connexions ne sont pas terminee =0
@@ -127,7 +126,7 @@ int main(int argc, char* argv[])
 		tabConnexion[i].windowMax = 0;
 		tabConnexion[i].head = createList();
 
-		fprintf(stderr, "avant wait for client\n");
+		fprintf(stderr, " En attente de la connexion du client %d ...\n", i+1);
 		int w = wait_for_client(sfd);
 		if (sfd > 0 && w < 0) 
 		{ 
@@ -135,7 +134,6 @@ int main(int argc, char* argv[])
 			tabConnexion[i].closed = 1;
 			return EXIT_FAILURE;
 		}
-		fprintf(stderr, "apres wait for client\n");
 
 		if (sfd < 0) {
 			fprintf(stderr, "Failed to create the socket!\n");
@@ -184,6 +182,6 @@ int main(int argc, char* argv[])
 		close(tabConnexion[i].fd_to_write);
 	}
 
-	fprintf(stderr,"FIN MAIN \n");
+	fprintf(stderr,"---------------------------- \n");
 	return EXIT_SUCCESS;
 }

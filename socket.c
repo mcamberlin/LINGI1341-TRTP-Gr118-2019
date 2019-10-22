@@ -147,8 +147,6 @@ int wait_for_client(int sfd)
 	    return -1;
 	}
 
-	fprintf(stderr, "dans wait for client apres recvfrom %d\n", client_addr.sin6_scope_id);
-
 	// 2. Connecter le socket du serveur au client via connect()
 	int connexion = connect(sfd, (struct sockaddr *) &client_addr,addrlen);
 	// int connect(int socket, const struct sockaddr *address, socklen_t address_len);
