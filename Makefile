@@ -15,7 +15,9 @@ LDFLAGS= -lz
 # Default target
 all: receiver
 
-receiver 
+receiver : 
+	gcc -o receiver receiver.c LinkedList.c packet_implem.c read_write_loop.c socket.c -lz $(CFLAGS)
+
 
 clean:
-	@rm -f chat chat.o read_write_loop.o create_socket.o real_address.o wait_for_client.o 
+	@rm -f receiver

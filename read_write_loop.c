@@ -14,6 +14,7 @@
 
 size_t tailleAck = 11; //taille d'un ACK et d'un NACK en bytes
 int nbrePktBuffer = 0;
+int dernierAck=-1; //initialisation 
 
 typedef struct connexion
 {
@@ -227,11 +228,7 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 				if(code == PKT_OK)     
 				{
 					fprintf(stderr, "SUCCES DECODE : /* Le paquet a ete traite avec succes */ \n"); 
-					int dernierAck = tabConnexion[i].windowMin-1;//correspond au dernier numero d'acquitement recu
-					if(tabConnexion[i].windowMin==0)
-					{
-						dernierAck = 255;
-					}
+					
 					if(pkt_get_type(pkt_recu) == PTYPE_DATA && pkt_get_length(pkt_recu)==0 && pkt_get_seqnum(pkt_recu) == dernierAck)//fin de la transmission si PTYPEDATA && length== && seqnum == dernier seqnum envoyé
 					{
 						tabConnexion[i].closed = 1;
@@ -325,6 +322,8 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 							}
 						}
 						//envoie d'un ACK
+
+						dernierAck = (pkt_get_seqnum(pkt_recu)+1) % 256;
 						pkt_t* pkt_ack = pkt_new();
 						pkt_set_type(pkt_ack, PTYPE_ACK);
 						pkt_set_tr(pkt_ack, 0);
