@@ -228,15 +228,16 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 				// 3. Reagir differemment selon le type recu
 				if(code == PKT_OK)     
 				{
-
+					fprintf(stderr, "numero de sequence du pkt recu : %d, dernier numero de ack : %d\n\n", pkt_get_seqnum(pkt_recu), dernierAck);
 					if(pkt_get_type(pkt_recu) == PTYPE_DATA && pkt_get_length(pkt_recu)==0 && pkt_get_seqnum(pkt_recu) == dernierAck)//fin de la transmission si PTYPEDATA && length== && seqnum == dernier seqnum envoyé
 					{
+						fprintf(stderr, "FIN DE CONNEXION\n\n");
 						tabConnexion[i].closed = 1;
 						nbreConnexionEnCours = nbreConnexionEnCours -1; //Met à jour le nombre de connexions non fermée
 						
 					}				
 					
-					if(pkt_get_type(pkt_recu) == PTYPE_DATA && tabConnexion[i].closed==0) //permet d'ignorer les autres types
+					if(pkt_get_type(pkt_recu) == PTYPE_DATA && tabConnexion[i].closed==0) //permet d'ignorer les autres types et ne pas considerer les connexions fermees
 					{
 						int windowSender = pkt_get_window(pkt_recu);
 						if(windowSender != tabConnexion[i].tailleWindow && windowSender!=0) //Si la fenetre actuelle est differente de celle recue dans le pkt (fenetre dynamique) && le cas ou on commence à parler le sender envoie une fenetre = 0
@@ -323,6 +324,8 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 							}
 						}
 						//envoie d'un ACK
+
+						
 
 						dernierAck = (pkt_get_seqnum(pkt_recu)+1) % 256;
 						pkt_t* pkt_ack = pkt_new();
