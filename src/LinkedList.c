@@ -113,7 +113,7 @@ pkt_t* isInList(node_t** head, int indice)
 
 	if((*head)==NULL)//liste est vide
 	{
-		printf("liste vide\n \n");
+		fprintf(stderr,"liste vide \n");
 		return NULL;
 	}
 
@@ -149,17 +149,17 @@ void printList(node** head)
 {
 	if(head==NULL)
 	{
-		printf("head==NULL\n");
+		fprintf(stderr,"head==NULL\n");
 		return;
 	}
 	printf("debut printList\n");
 	node* ptr = *head;
 	while(ptr!=NULL)
 	{
-		printf("indice = %d - %s\n", ptr->indice, pkt_get_payload(ptr->pkt));
+		fprintf(stderr,"indice = %d - %s\n", ptr->indice, pkt_get_payload(ptr->pkt));
 		ptr=ptr->next;
 	}
-	printf("fin printlist\n\n");
+
 }
 
 int freeLinkedList(node_t** head)
@@ -189,34 +189,3 @@ int freeLinkedList(node_t** head)
 		return 0;
 	}	
 }
-
-
-
-/*
-int main()
-{
-	int a = createList(head);
-	if(a==-1)
-	{
-		printf("createlist\n");
-	}
-
-	
-	insert(NULL, 2);
-	insert(NULL, 5);
-	insert(NULL, 0);
-	insert(NULL, 3);
-	insert(NULL, 1);
-	
-	node* ptr = *head;
-	while(ptr!=NULL)
-	{
-		printf("%d\n", ptr->indice);
-		ptr=ptr->next;
-	}
-
-	printf("L'indice est 4 est dans la liste : %p\n", isInList(4));
-	return 0;
-
-}
-*/

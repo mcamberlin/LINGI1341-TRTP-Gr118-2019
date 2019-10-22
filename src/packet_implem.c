@@ -21,7 +21,7 @@ struct __attribute__((__packed__)) pkt
 	uint8_t seqnum;
 	uint32_t timestamp;
 	uint32_t crc1;
-	char* payload ; // utiliser un pointeur est plus intéressant au point de vue des performances et de la consommation de la mémoire. L'espace memoire est alloue grace a un malloc (paylaod=mallo(...)) (pas oublier free(...))
+	char* payload ; // utiliser un pointeur est plus intéressant au point de vue des performances et de la consommation de la mémoire.
 	uint32_t crc2;
 };
 

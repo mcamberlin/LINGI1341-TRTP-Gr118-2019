@@ -114,7 +114,6 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
 	return fd;    
 }
 
-/* --------------------------------------------------------------- */
 
 
 /* --------------------------------------------------------------- */

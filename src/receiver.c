@@ -1,4 +1,3 @@
-
 #include <stdlib.h> // pour EXIT_X
 #include <stdio.h>  // fprintf
 #include <unistd.h> // getopt
@@ -10,14 +9,11 @@
 
 
 
-//gcc receiver.c LinkedList.c packet_implem.c read_write_loop.c socket.c -o receiver -lz -Wall -Werror -Wextra -Wshadow
-
 /*--------------------------MAIN------------------------------------*/
 
 
-
-int nbreConnexion = 100;
-char* formatSortie = "fichier_%02d.txt";
+int nbreConnexion = 100; //Valeur par défaut du nombre de connexions
+char* formatSortie = "fichier_%02d.txt"; //format par défaut choisi par nous
 int port = 0;
 char* hostname = NULL;
 
@@ -36,7 +32,7 @@ int main(int argc, char* argv[])
 
 	if(argc <2)
 	{	
-		fprintf(stderr, "Usage:\n -n      Nombre N de connexions que le recever doit pouvoir traiter de facon concurrente\n -o      type de format pour le formattage des fichiers de sortie\n hostname \n portnumber (server)\n");
+		fprintf(stderr, "Usage:\n -n Nombre N de connexions que le recever doit pouvoir traiter de facon concurrente\n -o type de format pour le formattage des fichiers de sortie\n hostname \n portnumber (server)\n");
 		return EXIT_FAILURE;	
 	}
 	
@@ -58,8 +54,6 @@ int main(int argc, char* argv[])
 				break;
 	
 			default: 
-	
-
 				isNumber = 1;
 				for(int i = 0; *(argv[index] + i) !='\0';i++)
 				{
@@ -84,10 +78,7 @@ int main(int argc, char* argv[])
 						fprintf(stderr,"Erreur allocation de mémoire pour @hostname dans interprétation des commandes");
 						return EXIT_FAILURE;
 					}
-					//size_t taille = sizeof(argv[index]);
-					//strncpy(hostname, argv[index],taille);	
-					
-					// char *strncpy(char *dest, const char *src, size_t n);
+
 					hostname = argv[index];
 					fprintf(stderr,"hostname : %s \n",hostname);
 					index +=1;
@@ -100,23 +91,23 @@ int main(int argc, char* argv[])
 
 
 	// Resolve the hostname 
-	struct sockaddr_in6 addr;
-	const char *err = real_address(hostname, &addr);
-	if (err) {
-		fprintf(stderr, "Could not resolve hostname %s: %s\n", hostname, err);
-		return EXIT_FAILURE;
-	}
-
-
+	struct sockaddr_in6 addr[nbreConnexion];
+	
 	// Creation d'un tableau de @nbreConnexion de structure @connexion
 	connexion tabConnexion[nbreConnexion];
 	
 	
 	// Get a socket
-	// For loop for n sockets
 	for(int i=0; i<nbreConnexion;i++) //creation d'un socket par connexion
 	{		
-		int sfd = create_socket(&addr, port,NULL,-1); // Bound
+		const char *err = real_address(hostname, &(addr[i]));
+		if (err) {
+			fprintf(stderr, "Could not resolve hostname %s: %s\n", hostname, err);
+			return EXIT_FAILURE;
+		}
+
+
+		int sfd = create_socket(&(addr[i]), port,NULL,-1); // Bound
 		//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
 		tabConnexion[i].sfd = sfd;
 		tabConnexion[i].closed=0; // Par defaut les connexions ne sont pas terminee =0
@@ -167,8 +158,9 @@ int main(int argc, char* argv[])
 		tabConnexion[i].fd_to_write = fichier;
 	}
 	
-	//void read_write_loop(connexion[] tabConnexion, int nbreConnexion)
+	
 	read_write_loop(tabConnexion, nbreConnexion);
+	//void read_write_loop(connexion[] tabConnexion, int nbreConnexion)
 
 	//fermer les fd des sockets
 	for(int i=0; i<nbreConnexion;i++)
@@ -181,6 +173,8 @@ int main(int argc, char* argv[])
 	{
 		close(tabConnexion[i].fd_to_write);
 	}
+	
+	free(hostname); //liberer l'espace alloue pour hostname
 
 	fprintf(stderr,"---------------------------- \n");
 	return EXIT_SUCCESS;

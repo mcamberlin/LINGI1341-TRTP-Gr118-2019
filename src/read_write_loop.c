@@ -1,4 +1,3 @@
-
 #include "socket.h" 
 #include "packet_interface.h"
 #include "LinkedList.h"
@@ -51,7 +50,7 @@ int printPkt(pkt_t* pkt)
 */
 int isInWindow(int seqnum, int windowMin, int windowMax)
 {
-	if(windowMin<windowMax)//cas ou la borne superieur n'est pas encore revenue a zero
+	if(windowMin<windowMax) //cas ou la borne superieur n'est pas encore revenue a zero
 	{
 		if(windowMin<=seqnum && windowMax>=seqnum)
 		{
@@ -95,7 +94,7 @@ void augmenteBorne(int* borne)
 
 void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 {
-	const int MAXSIZE = MAX_PAYLOAD_SIZE + 12 + 4; //   EN-TETE + CRC1 + payload + CRC2 
+	const int MAXSIZE = 12 + MAX_PAYLOAD_SIZE + 4; //   EN-TETE + CRC1 + payload + CRC2 
 	char buffer_socket[MAXSIZE]; //buffer de la lecture du socket 
 
 	nfds_t nfds = nbreConnexion;
@@ -147,7 +146,7 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 					{
 						fprintf(stderr,"Erreur DECODE : /* Erreur liee au champs Type */, code = %d \n", code);
 					}
-					if(code == E_TR)//envoie d'un NACK
+					if(code == E_TR) // Erreur liée au champ TR implique l'envoi d'un NACK
 					{
 			
 						//envoie d'un NACK
@@ -177,10 +176,9 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 							fprintf(stderr, "Erreur dans pkt_encode d'un NACK\n");
 						}
 						fprintf(stderr," ======= PKT NACK ENVOYE ======= \n\t");
-						printPkt(pkt_nack);
 						
-
-											
+						printPkt(pkt_nack); //affiche le NACK renvoye
+								
 						pkt_del(pkt_nack);
 						pkt_del(pkt_recu);
 						ssize_t sent = send(tabConnexion[i].sfd, buf, tailleAck, 0);
@@ -271,10 +269,10 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 								}
 
 								
-								fprintf(stderr,"1. Valeur borne MIN : %d, Valeur borne MAX : %d, valeur de la window : %d \n",tabConnexion[i].windowMin,tabConnexion[i].windowMax, pkt_get_window(pkt_recu));
+								// fprintf(stderr,"1. Valeur borne MIN : %d, Valeur borne MAX : %d, valeur de la window : %d \n",tabConnexion[i].windowMin,tabConnexion[i].windowMax, pkt_get_window(pkt_recu));
 								augmenteBorne(&(tabConnexion[i].windowMin));
 								augmenteBorne(&(tabConnexion[i].windowMax));
-								fprintf(stderr,"2. Valeur borne MIN : %d, Valeur borne MAX : %d, valeur de la window : %d \n",tabConnexion[i].windowMin,tabConnexion[i].windowMax, pkt_get_window(pkt_recu));
+								// fprintf(stderr,"2. Valeur borne MIN : %d, Valeur borne MAX : %d, valeur de la window : %d \n",tabConnexion[i].windowMin,tabConnexion[i].windowMax, pkt_get_window(pkt_recu));
 
 								
 								int seqnum_suivant = seqnum+1;
@@ -284,13 +282,12 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 								
 								if(pktSuivant == NULL)
 								{
-									printf("le numero suivant n'est pas dans la liste, %d\n", seqnum_suivant);
+									fprintf(stderr,"Le numero suivant n'est pas dans la liste, %d\n", seqnum_suivant);
 								}
 								else
 								{
-									printf("début boucle while\n");
+
 									//printList(tabConnexion[i].head);
-									printf("message = %s\n", pkt_get_payload(pktSuivant));
 
 									while(pktSuivant != NULL)
 									{
@@ -313,7 +310,7 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 							}
 							else //le seqnum appartient a la fenetre mais plus grand que la borne inferieur -> on met dans la liste chainee
 							{
-								printf("met dans la liste chainee\n");
+								fprintf(stderr,"met dans la liste chainee\n");
 								int err = insert(tabConnexion[i].head, pkt_recu, pkt_get_seqnum(pkt_recu));
 								if(err == -1)
 								{
@@ -323,10 +320,8 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 								//printList(tabConnexion[i].head);
 							}
 						}
-						//envoie d'un ACK
-
-						
-
+							
+						//envoi d'un ACK
 						
 						pkt_t* pkt_ack = pkt_new();
 						pkt_set_type(pkt_ack, PTYPE_ACK);
@@ -375,24 +370,18 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 
 					if(pkt_get_type(pkt_recu) == PTYPE_DATA && tabConnexion[i].closed==1) //envoie le dernier ack pour la fin de connexion
 					{
-
-						
 						pkt_t* pkt_ack = pkt_new();
 						pkt_set_type(pkt_ack, PTYPE_ACK);
 						pkt_set_tr(pkt_ack, 0);
 						
 						pkt_set_window(pkt_ack, (tabConnexion[i].tailleWindow)-nbrePktBuffer);
 						pkt_set_length(pkt_ack, 0);
-						if(tabConnexion[i].closed == 1)
-				
+										
 						fprintf(stderr, "le num de seq envoye pour la fin de connexion est %d\n", dernierAck);
-						pkt_set_seqnum(pkt_ack, dernierAck); //2⁸ = 256
+						pkt_set_seqnum(pkt_ack, dernierAck); 
 					
 						pkt_set_timestamp(pkt_ack, pkt_get_timestamp(pkt_recu));
 						
-						//uint32_t crc1R=crc32(0,(const Bytef *) , *len);
-						
-
 						char* buf = (char*) malloc(tailleAck);
 						if(buf==NULL)
 						{
@@ -416,7 +405,7 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 						//ssize_t send(int socket, const void *buffer, size_t length, int flags);
 						if(sent == -1)
 						{
-							fprintf(stderr,"L'envoi du ACK pour la connexion %d a echoue \n",tabConnexion[i].sfd);
+							fprintf(stderr,"L'envoi du ACK pour la fin de connexion %d a echoue \n",tabConnexion[i].sfd);
 						}
 						
 						free(buf); 
