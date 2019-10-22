@@ -327,15 +327,67 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 
 						
 
-						dernierAck = (pkt_get_seqnum(pkt_recu)+1) % 256;
+						
 						pkt_t* pkt_ack = pkt_new();
 						pkt_set_type(pkt_ack, PTYPE_ACK);
 						pkt_set_tr(pkt_ack, 0);
 						
 						pkt_set_window(pkt_ack, (tabConnexion[i].tailleWindow)-nbrePktBuffer);
 						pkt_set_length(pkt_ack, 0);
+					
+						dernierAck = (pkt_get_seqnum(pkt_recu)+1) % 256;
+						fprintf(stderr, "le num de seq envoye est %d\n", dernierAck);
 						pkt_set_seqnum(pkt_ack, (pkt_get_seqnum(pkt_recu)+1) % 256); //2⁸ = 256
+										
+						pkt_set_timestamp(pkt_ack, pkt_get_timestamp(pkt_recu));
 						
+						//uint32_t crc1R=crc32(0,(const Bytef *) , *len);
+						
+
+						char* buf = (char*) malloc(tailleAck);
+						if(buf==NULL)
+						{
+							fprintf(stderr, "Erreur malloc ack dans read_write_loop\n");
+							return;
+						}
+						
+						pkt_status_code status = pkt_encode(pkt_ack, buf, &tailleAck);
+							
+						if(status!=PKT_OK)
+						{
+							fprintf(stderr, "Erreur dans pkt_encode d'un ACK\n");
+						}
+						fprintf(stderr," ======= PKT ACCUSE ENVOYE ======= \n");
+						printPkt(pkt_ack);
+
+											
+						pkt_del(pkt_ack);
+						pkt_del(pkt_recu);
+						ssize_t sent = send(tabConnexion[i].sfd, buf, tailleAck, 0);
+						//ssize_t send(int socket, const void *buffer, size_t length, int flags);
+						if(sent == -1)
+						{
+							fprintf(stderr,"L'envoi du ACK pour la connexion %d a echoue \n",tabConnexion[i].sfd);
+						}
+						
+						free(buf); 
+					}
+
+					if(pkt_get_type(pkt_recu) == PTYPE_DATA && tabConnexion[i].closed==1) //envoie le dernier ack pour la fin de connexion
+					{
+
+						
+						pkt_t* pkt_ack = pkt_new();
+						pkt_set_type(pkt_ack, PTYPE_ACK);
+						pkt_set_tr(pkt_ack, 0);
+						
+						pkt_set_window(pkt_ack, (tabConnexion[i].tailleWindow)-nbrePktBuffer);
+						pkt_set_length(pkt_ack, 0);
+						if(tabConnexion[i].closed == 1)
+				
+						fprintf(stderr, "le num de seq envoye pour la fin de connexion est %d\n", dernierAck);
+						pkt_set_seqnum(pkt_ack, dernierAck); //2⁸ = 256
+					
 						pkt_set_timestamp(pkt_ack, pkt_get_timestamp(pkt_recu));
 						
 						//uint32_t crc1R=crc32(0,(const Bytef *) , *len);
