@@ -16,7 +16,11 @@ LDFLAGS= -lz
 all: receiver
 
 receiver : 
-	gcc -o receiver receiver.c LinkedList.c packet_implem.c read_write_loop.c socket.c -lz $(CFLAGS)
+	gcc -o receiver src/receiver.c src/LinkedList.c src/packet_implem.c src/read_write_loop.c src/socket.c -lz $(CFLAGS)
+
+tests: receiver
+	./receiver -m 1 -o "fichier_%02d.dat" :: 123456
+	./sender -f tests/dataToSend.txt  ::1 123456
 
 
 clean:
