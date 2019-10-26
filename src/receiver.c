@@ -174,7 +174,6 @@ int main(int argc, char* argv[])
 		close(tabConnexion[i].fd_to_write);
 	}
 	
-	free(hostname); //liberer l'espace alloue pour hostname
 
 	fprintf(stderr,"---------------------------- \n");
 	return EXIT_SUCCESS;

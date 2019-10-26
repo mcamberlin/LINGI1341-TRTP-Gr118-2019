@@ -229,6 +229,9 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 					fprintf(stderr, "numero de sequence du pkt recu : %d, dernier numero de ack : %d\n\n", pkt_get_seqnum(pkt_recu), dernierAck);
 					if(pkt_get_type(pkt_recu) == PTYPE_DATA && pkt_get_length(pkt_recu)==0 && pkt_get_seqnum(pkt_recu) == dernierAck)//fin de la transmission si PTYPEDATA && length== && seqnum == dernier seqnum envoyé
 					{
+						fprintf(stderr," ======= PKT DERNIER PACKET RECU ======= \n");
+						printPkt(pkt_recu);
+						
 						fprintf(stderr, "FIN DE CONNEXION\n\n");
 						tabConnexion[i].closed = 1;
 						nbreConnexionEnCours = nbreConnexionEnCours -1; //Met à jour le nombre de connexions non fermée
@@ -327,7 +330,11 @@ void read_write_loop(connexion tabConnexion[], int nbreConnexion)
 						pkt_set_type(pkt_ack, PTYPE_ACK);
 						pkt_set_tr(pkt_ack, 0);
 						
+
+						fprintf(stderr, "\t Nombre de paquet dans le buffer = %d \n",nbrePktBuffer);
+						
 						pkt_set_window(pkt_ack, (tabConnexion[i].tailleWindow)-nbrePktBuffer);
+						// PQ ne pas FAIRE CA ??? pkt_set_window(pkt_ack, 31 - nbrePktBuffer);
 						pkt_set_length(pkt_ack, 0);
 					
 						dernierAck = (pkt_get_seqnum(pkt_recu)+1) % 256;
