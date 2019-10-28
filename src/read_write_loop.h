@@ -50,7 +50,7 @@ void augmenteBorne(int* borne);
  * @return: dès qu'un paquet DATA avec le champ length à 0 et dont le numéro de séquence correspond au dernier numéro d'acquittement envoyé par le destinataire.
  */
 
-void read_write_loop(connexion tabConnexion[], int nbreConnexion);
+void read_write_loop(int sfd, connexion tabConnexion[], int nbreConnexion);
 
 
 /** ------------------ struct addrinfo ---------------------

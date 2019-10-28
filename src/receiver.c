@@ -89,92 +89,32 @@ int main(int argc, char* argv[])
 	fprintf(stderr,"\t\t\t Fin de l'interprétation des commandes \n\n");
 
 
-
-	// Resolve the hostname 
-	struct sockaddr_in6 addr[nbreConnexion];
-	
-	// Creation d'un tableau de @nbreConnexion de structure @connexion
-	connexion tabConnexion[nbreConnexion];
-	
-	
-	// Get a socket
-	for(int i=0; i<nbreConnexion;i++) //creation d'un socket par connexion
-	{		
-		const char *err = real_address(hostname, &(addr[i]));
-		if (err) {
-			fprintf(stderr, "Could not resolve hostname %s: %s\n", hostname, err);
-			return EXIT_FAILURE;
-		}
+	// Creation d'une liste chainée qui contiendra l'ensemble des structures @connexion
+	c_node ** c_head = createConnexionList();
 
 
-		int sfd = create_socket(&(addr[i]), port,NULL,-1); // Bound
-		//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
-		tabConnexion[i].sfd = sfd;
-		tabConnexion[i].closed=0; // Par defaut les connexions ne sont pas terminee =0
-
-		tabConnexion[i].tailleWindow = 1; // taille par défaut de la fenetre du sender[i]
-		tabConnexion[i].windowMin =0;
-		tabConnexion[i].windowMax = 0;
-		tabConnexion[i].head = createList();
-
-		fprintf(stderr, " En attente de la connexion du client %d ...\n", i+1);
-		int w = wait_for_client(sfd);
-		if (sfd > 0 && w < 0) 
-		{ 
-			fprintf(stderr,	"Could not connect the %dth socket after the first message.\n", i);
-			tabConnexion[i].closed = 1;
-			return EXIT_FAILURE;
-		}
-
-		if (sfd < 0) {
-			fprintf(stderr, "Failed to create the socket!\n");
-			tabConnexion[i].closed = 1;
-			return EXIT_FAILURE;
-		}
-		
-		char buffer[strlen(formatSortie)];
-		
-		int cx = snprintf(buffer,strlen(formatSortie),formatSortie,i);
-		if(cx <0)
-		{
-			fprintf(stderr," snprintf() a plante \n");
-			return EXIT_FAILURE;
-		}
-
-
-		FILE* f = fopen(buffer,"w+"); //read,Write et create
-		if(f == NULL)
-		{
-			fprintf(stderr, "Erreur dans l'ouverture du fichier \n");
-			return EXIT_FAILURE;
-		}
-		int fichier = fileno(f);
-		//int fichier = fopen(formatSortie, O_CREAT | O_WRONLY | O_APPEND, S_IRWXU); //si le fichier n'existe pas, il le crée
-		if(fichier == -1) // cas où @fopen() a planté
-		{
-			fprintf(stderr, "Erreur dans fileno() \n");
-			return EXIT_FAILURE;
-		}
-		tabConnexion[i].fd_to_write = fichier;
-	}
-	
-	
-	read_write_loop(tabConnexion, nbreConnexion);
-	//void read_write_loop(connexion[] tabConnexion, int nbreConnexion)
-
-	//fermer les fd des sockets
-	for(int i=0; i<nbreConnexion;i++)
+	// 1. Resolve the hostname 
+	struct sockaddr_in6 addr;	
+	const char *err = real_address(hostname,&addr);
+	if (err)
 	{
-		close(tabConnexion[i].sfd);
+		fprintf(stderr, "Could not resolve hostname %s: %s\n", hostname, err);
+		return EXIT_FAILURE;
 	}
 
-	//fermer les fd des fd_to_write
-	for(int i=0; i<nbreConnexion;i++)
+	// 2. Creation d'un socket pour toutes les connexions sans le connecter pour ecouter de partout
+	int sfd = create_socket(&addr, port,NULL,-1);
+	//int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockaddr_in6 *dest_addr, int dst_port)
+	if(sfd == -1)
 	{
-		close(tabConnexion[i].fd_to_write);
-	}
+		fprintf(stderr,"Erreur createsocket() \n");	
+	}	
 	
 
-	fprintf(stderr,"---------------------------- \n");
+	fprintf(stderr,"-----------DEBUT READ_WRITE_LOOP ----------------- \n");
+	read_write_loop(sfd, c_head , nbreConnexion);
+	//void read_write_loop(int sfd, c_node ** head, int nbreConnexion)
+
+
 	return EXIT_SUCCESS;
 }

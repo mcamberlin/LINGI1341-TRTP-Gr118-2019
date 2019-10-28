@@ -90,7 +90,7 @@ int create_socket(struct sockaddr_in6 *source_addr, int src_port, struct sockadd
 	if(source_addr != NULL)
 	{                    
 		int lien = bind(fd,(struct sockaddr*) source_addr, (socklen_t) sizeof(struct sockaddr_in6));
-	    //int bind(int socket, const struct sockaddr *address, socklen_t address_len);
+	        //int bind(int socket, const struct sockaddr *address, socklen_t address_len);
 		if(lien == -1)
 		{
 		    //close(fd); la fermeture des fd se fera tout a la fin de receiver.c
@@ -145,7 +145,8 @@ int wait_for_client(int sfd)
 	    fprintf(stderr, "Erreur avec recfrom() dans wait_for_client(): %s \n", strerror(errno));
 	    return -1;
 	}
-
+/* 
+On ne connecte pas le socket pour pouvoir parler à tous
 	// 2. Connecter le socket du serveur au client via connect()
 	int connexion = connect(sfd, (struct sockaddr *) &client_addr,addrlen);
 	// int connect(int socket, const struct sockaddr *address, socklen_t address_len);
@@ -156,6 +157,7 @@ int wait_for_client(int sfd)
 		return -1;  
 	}
 	
+*/
 	return 0;
 }
 
