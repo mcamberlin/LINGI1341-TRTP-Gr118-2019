@@ -6,16 +6,26 @@
 #include "socket.h"
 #include "read_write_loop.h"
 #include "LinkedList.h"
+#include "ConnexionList.h"
 
+
+
+
+
+typedef struct c_node
+{
+	connexion_t* c_connexion;
+	struct c_node* next;
+}c_node;
+
+
+int nbreConnexionMax = 100; //Valeur par défaut du nombre de connexions
+char* formatSortie = "%d"; //format par défaut
+int port = 0;
+char* hostname = NULL;
 
 
 /*--------------------------MAIN------------------------------------*/
-
-
-int nbreConnexion = 100; //Valeur par défaut du nombre de connexions
-char* formatSortie = "fichier_%02d.txt"; //format par défaut choisi par nous
-int port = 0;
-char* hostname = NULL;
 
 /** La fonction main est la fonction principale de notre programme:
 	@pre - argc = nombre d'arguments passés lors de l'appel de l'exécutable
@@ -48,8 +58,8 @@ int main(int argc, char* argv[])
 				index+=2;
 				break;
 			case 'm':
-				nbreConnexion = atoi(optarg);
-				fprintf(stderr,"-m spécifié : %d\n",nbreConnexion);
+				nbreConnexionMax = atoi(optarg);
+				fprintf(stderr,"-m spécifié : %d\n",nbreConnexionMax);
 				index+=2;
 				break;
 	
@@ -89,14 +99,10 @@ int main(int argc, char* argv[])
 	fprintf(stderr,"\t\t\t Fin de l'interprétation des commandes \n\n");
 
 
-	// Creation d'une liste chainée qui contiendra l'ensemble des structures @connexion
-	c_node ** c_head = createConnexionList();
-
-
 	// 1. Resolve the hostname 
 	struct sockaddr_in6 addr;	
 	const char *err = real_address(hostname,&addr);
-	if (err)
+	if (err != NULL)
 	{
 		fprintf(stderr, "Could not resolve hostname %s: %s\n", hostname, err);
 		return EXIT_FAILURE;
@@ -108,12 +114,18 @@ int main(int argc, char* argv[])
 	if(sfd == -1)
 	{
 		fprintf(stderr,"Erreur createsocket() \n");	
+	}
+
+	// Creation d'une liste chainée qui contiendra l'ensemble des structures @connexion 
+	c_node** c_head = createConnexionList();
+	if(c_head == NULL)
+	{
+		return EXIT_FAILURE;
 	}	
 	
 
 	fprintf(stderr,"-----------DEBUT READ_WRITE_LOOP ----------------- \n");
-	read_write_loop(sfd, c_head , nbreConnexion);
-	//void read_write_loop(int sfd, c_node ** head, int nbreConnexion)
+	read_write_loop(sfd, c_head, formatSortie, nbreConnexionMax);
 
 
 	return EXIT_SUCCESS;

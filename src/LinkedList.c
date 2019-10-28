@@ -117,6 +117,8 @@ pkt_t* isInList(node_t** head, int indice)
 		return NULL;
 	}
 
+	//printList(head);
+	fprintf(stderr, "(*head)->indice = %d\n", (*head)->indice);
 	if((*head)->indice == indice)
 	{
 		pkt_t* tmp = (*head)->pkt;

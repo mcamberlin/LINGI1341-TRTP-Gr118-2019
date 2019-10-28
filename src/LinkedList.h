@@ -11,7 +11,7 @@ typedef struct node node_t;
 
 node_t** createList();
 
-node_t newNode(int indice);
+node_t* newNode(int indice);
 
 int insert(node_t** head, pkt_t* newpkt, int newIndice);
 
