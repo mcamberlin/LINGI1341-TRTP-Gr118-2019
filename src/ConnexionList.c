@@ -156,12 +156,13 @@ int removeConnexion(c_node** head, connexion* connexionToRemove)
 	{
 		if(memcmp((const void*) (*head)->c_connexion, (const void*) connexionToRemove, sizeof(struct connexion))==0)
 		{
-			close(connexionToRemove->fd_to_write);
-			freeLinkedList(connexionToRemove->head);
+			close((*head)->c_connexion->fd_to_write);
+			freeLinkedList((*head)->c_connexion->head);
 
 			free((*head)->c_connexion);
 			free(*head);
 			*head=NULL;
+			fprintf(stderr, "connexion removed successfully\n");
 			return 0;
 		}
 		return -1; // Le seul element qui est actuellement dans la liste n'est pas celui qu'il faut retirer
@@ -172,12 +173,13 @@ int removeConnexion(c_node** head, connexion* connexionToRemove)
 
 	if(memcmp((const void*) previous->c_connexion, (const void*) connexionToRemove, sizeof(struct connexion))==0)//retirer le premier 
 	{
-		close(connexionToRemove->fd_to_write);
-		freeLinkedList(connexionToRemove->head);
+		close(previous->c_connexion->fd_to_write);
+		freeLinkedList(previous->c_connexion->head);
 		
 		free(previous->c_connexion);
 		free(previous);
 		*head = runner;
+		fprintf(stderr, "connexion removed successfully\n");
 		return 0;
 	}
 	
@@ -185,18 +187,19 @@ int removeConnexion(c_node** head, connexion* connexionToRemove)
 	{
 		if(memcmp((const void*) runner->c_connexion, (const void*) connexionToRemove, sizeof(struct connexion))==0)
 		{
-			close(connexionToRemove->fd_to_write);
-			freeLinkedList(connexionToRemove->head);
+			close(runner->c_connexion->fd_to_write);
+			freeLinkedList(runner->c_connexion->head);
 			
 			previous->next = runner->next;
 			
 			free(runner->c_connexion);
 			free(runner);
+			fprintf(stderr, "connexion removed successfully\n");
 			return 0;
 		}
 		previous = previous->next;
 		runner = runner->next;
 	}		
-	return -1;
+	return 0;
 }
 

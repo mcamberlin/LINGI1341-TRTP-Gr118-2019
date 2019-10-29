@@ -18,6 +18,7 @@ node** createList()
 	{
 		return NULL;
 	}
+	*head = NULL;
 	return head;
 }
 
@@ -36,7 +37,7 @@ node* nouveauNode(pkt_t* pkt, int indice)
 
 int insert(node** head, pkt_t* newpkt, int newIndice)
 {
-	
+	fprintf(stderr, "DEBUT INSERT (linkedlist)\n");
 	if(head==NULL)
 	{
 		return -1; //non-initialise
@@ -187,7 +188,6 @@ int freeLinkedList(node_t** head)
 			runner = runner->next;
 			free(previous);			
 		}
-		//free(*head);
 		return 0;
 	}	
 }

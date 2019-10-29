@@ -445,7 +445,6 @@ void read_write_loop(int sfd, c_node_t** c_head, char* formatSortie, int nbreCon
 						pkt_del(pkt_ack);
 						pkt_del(pkt_recu);
 						
-						//freeLinkedList(c_courante->head);
 						
 						ssize_t sent = sendto(sfd, buf, tailleAck, 0,(const struct sockaddr *) &client_addr, addrlen );
 						//ssize_t sendto(int sockfd, const void* buf, size_t length, int flags, const struct sockaddr* dest_addr, socklen_t addr);
@@ -454,14 +453,16 @@ void read_write_loop(int sfd, c_node_t** c_head, char* formatSortie, int nbreCon
 							fprintf(stderr,"L'envoi du ACK pour la fin de connexion %d a echoue \n",sfd);
 						}
 						
-						free(buf); 
-						// fermer le fd_to_write
-						close(c_courante->fd_to_write);
+						free(buf);
 						
 						nbreConnexionEnCours = nbreConnexionEnCours -1;	
 
-						
-						//removeConnexion(c_head, c_courante);
+						//removeConnexion ferme fd_to_write, free la liste chainee du buffer, free la connexion et free le noeud de connexionList
+						int remove = removeConnexion(c_head, c_courante);
+						if(remove == -1)
+						{
+							fprintf(stderr, "erreur dans removeConnexion\n");
+						}
 						fprintf(stderr, "ICI \n");
 					}
 				}
