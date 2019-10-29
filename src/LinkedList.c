@@ -186,6 +186,7 @@ int freeLinkedList(node_t** head)
 		{
 			previous = runner;
 			runner = runner->next;
+			free(previous->pkt);
 			free(previous);			
 		}
 		return 0;

@@ -19,7 +19,7 @@ receiver :
 	gcc -o receiver src/receiver.c src/LinkedList.c src/packet_implem.c src/read_write_loop.c src/socket.c src/ConnexionList.c -lz $(CFLAGS)
 
 tests: receiver
-	./receiver -m 1 -o "fichier_%02d.dat" :: 12345
+	./receiver -o "fichier_%02d.dat" :: 12345
 
 
 clean:
