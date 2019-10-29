@@ -440,11 +440,13 @@ void read_write_loop(int sfd, c_node_t** c_head, char* formatSortie, int nbreCon
 							fprintf(stderr, "Erreur dans pkt_encode d'un ACK\n");
 						}
 						fprintf(stderr," ======= PKT ACCUSE ENVOYE ======= \n");
-						printPkt(pkt_ack);
-
-						freeLinkedList(c_courante->head);				
+						//printPkt(pkt_ack);
+																
 						pkt_del(pkt_ack);
 						pkt_del(pkt_recu);
+						
+						//freeLinkedList(c_courante->head);
+						
 						ssize_t sent = sendto(sfd, buf, tailleAck, 0,(const struct sockaddr *) &client_addr, addrlen );
 						//ssize_t sendto(int sockfd, const void* buf, size_t length, int flags, const struct sockaddr* dest_addr, socklen_t addr);
 						if(sent == -1)
@@ -458,7 +460,9 @@ void read_write_loop(int sfd, c_node_t** c_head, char* formatSortie, int nbreCon
 						
 						nbreConnexionEnCours = nbreConnexionEnCours -1;	
 
-						removeConnexion(c_head, c_courante);
+						
+						//removeConnexion(c_head, c_courante);
+						fprintf(stderr, "ICI \n");
 					}
 				}
 			}
