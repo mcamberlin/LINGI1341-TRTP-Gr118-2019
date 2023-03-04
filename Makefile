@@ -1,26 +1,51 @@
-# See gcc/clang manual to understand all flags
-CFLAGS += -std=c99 # Define which version of the C standard to use
-CFLAGS += -Wall # Enable the 'all' set of warnings
-CFLAGS += -Werror # Treat all warnings as error
-CFLAGS += -Wshadow # Warn when shadowing variables
-CFLAGS += -Wextra # Enable additional warnings
-CFLAGS += -O2 -D_FORTIFY_SOURCE=2 # Add canary code, i.e. detect buffer overflows
-CFLAGS += -fstack-protector-all # Add canary code to detect stack smashing
-CFLAGS += -D_POSIX_C_SOURCE=201112L -D_XOPEN_SOURCE # feature_test_macros for getpot and getaddrinfo
+CC = gcc
 
-# We have no libraries to link against except libc, but we want to keep
-# the symbols for debugging
-LDFLAGS= -lz
+CFLAGS += -c -std=gnu99 -Wall -Werror -Wextra -O2
+CFLAGS += -D_COLOR # By default, we colorize the output, but this might be ugly in log files, so feel free to remove the following line.
+LDFLAGS += -lz
 
-# Default target
-all: receiver
+# Adapt these as you want to fit with your project
+SENDER_SOURCES = $(wildcard src/socket.c src/utils.c src/packet_utils.c src/packet_implem.c src/sender.c src/log.c)
+RECEIVER_SOURCES = $(wildcard src/socket.c src/utils.c src/packet_utils.c src/packet_implem.c src/receiver.c src/log.c)
 
-receiver : 
-	gcc -o receiver src/receiver.c src/LinkedList.c src/packet_implem.c src/read_write_loop.c src/socket.c src/ConnexionList.c -lz $(CFLAGS)
+SENDER_OBJECTS = $(SENDER_SOURCES:.c=.o)
+RECEIVER_OBJECTS = $(RECEIVER_SOURCES:.c=.o)
 
-tests: receiver
-	./receiver -o "fichier_%02d.dat" :: 12345
 
+SENDER = sender
+RECEIVER = receiver
+
+all: $(SENDER) $(RECEIVER)
+
+$(SENDER): $(SENDER_OBJECTS)
+	$(CC) $(SENDER_OBJECTS) -o $@ $(LDFLAGS)
+
+$(RECEIVER): $(RECEIVER_OBJECTS)
+	$(CC) $(RECEIVER_OBJECTS) -o $@ $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+
+.PHONY: clean mrproper
 
 clean:
-	@rm -f receiver
+	rm -f $(SENDER_OBJECTS) $(RECEIVER_OBJECTS)
+
+mrproper:
+	rm -f $(SENDER) $(RECEIVER)
+
+tests: all
+	./tests/run_tests.sh
+
+# By default, logs are disabled. But you can enable them with the debug target.
+debug: CFLAGS += -D_DEBUG
+debug: clean all
+
+# A zip target, to help you have a proper zip file.
+ZIP_NAME="projet1_camberlin.zip"
+zip:
+	# Generate the log file stat now. Try to keep the repository clean.
+	git log --stat > gitlog.stat
+	zip -r $(ZIP_NAME) Makefile src tests rapport.pdf gitlog.stat
+	# We remove it now, but you can leave it if you want.
+	rm gitlog.stat
